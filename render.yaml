@@ -3,7 +3,7 @@ services:
     name: PetCare
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn PetCare.wsgi:application
+    startCommand:  "gunicorn PetCare.wsgi:application -c gunicorn.conf.py"
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: PetCare.settings
