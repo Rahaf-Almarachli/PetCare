@@ -88,3 +88,13 @@ class ResetPasswordView(APIView):
         otp_obj.save()
 
         return Response({"message": "Password reset successful."}, status=status.HTTP_200_OK)
+    
+    from rest_framework.response import Response
+from rest_framework.decorators import api_view
+
+@api_view(['GET'])
+def api_root(request, format=None):
+    return Response({
+        'users': reverse('user-list', request=request, format=format),
+        'pets': reverse('pet-list', request=request, format=format)
+    })
