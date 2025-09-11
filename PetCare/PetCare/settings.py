@@ -29,7 +29,7 @@ SECRET_KEY = 'django-insecure-#@_9_zq&eioto*vd(3-qn)ayvtrs@f3@9sbj7)08doegcyax4k
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
-ALLOWED_HOSTS = ['petcare-q9i0.onrender.com', '127.0.0.1', 'localhost']
+ALLOWED_HOSTS = ['petcare-q9j0.onrender.com', '127.0.0.1', 'localhost']
 
 AUTH_USER_MODEL= 'account.User'
 
