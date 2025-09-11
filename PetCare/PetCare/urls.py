@@ -26,5 +26,6 @@ urlpatterns = [
     path('api/adoption/', include('adoption.urls')),
     path('api/mating/', include('mating.urls')),
      path('api/', include('appointment.urls')),
+     path('api/vaccination/', include('vaccination.urls')),
     path('api-auth/', include('rest_framework.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'adoption',
     'mating',
     'appointment',
+    'vaccination',
     'django_filters',
 ]
 
