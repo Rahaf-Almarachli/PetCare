@@ -4,4 +4,4 @@ djangorestframework==3.16.0
 sqlparse==0.5.3
 tzdata==2025.2
 gunicorn
-rest_framework_simplejwt
+djangorestframework-simplejwt
