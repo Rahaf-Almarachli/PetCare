@@ -1,9 +1,13 @@
 services:
   - type: web
-    name: PetCare-api 
+    name: PetCare
     env: python
-    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput"
-    startCommand: "gunicorn PetCare.wsgi:application --bind 0.0.0.0:$PORT"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn PetCare.wsgi:application
     envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: PetCare.settings
       - key: SECRET_KEY
         generateValue: true
+      - key: DEBUG
+        value: false
