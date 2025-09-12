@@ -1,13 +1,27 @@
 from django.urls import path
-from .views import SignupView, LoginView, ForgetPasswordView, ResetPasswordView
+from .views import (
+    SignupRequestView,
+    SignupVerifyView,
+    LoginView,
+    ForgetPasswordView,
+    ResetPasswordView
+)
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
-    path('signup/', SignupView.as_view(), name='signup'),
-    path('login/', LoginView.as_view(), name='login'),  # ترجع توكن JWT
+    # Signup (طلب OTP)
+    path('signup/request/', SignupRequestView.as_view(), name='signup-request'),
+
+    # Signup (التحقق من OTP وتفعيل الحساب)
+    path('signup/verify/', SignupVerifyView.as_view(), name='signup-verify'),
+
+    # Login
+    path('login/', LoginView.as_view(), name='login'),
+
+    # Forgot & Reset Password
     path('forgot-password/', ForgetPasswordView.as_view(), name='forgot-password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),  # تجديد التوكن
+
+    # Refresh JWT Token
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
-
-

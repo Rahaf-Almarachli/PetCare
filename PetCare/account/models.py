@@ -36,16 +36,21 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.email
 
 class OTP(models.Model):
+    OTP_TYPE_CHOICES = (
+        ("signup", "Signup Verification"),
+        ("reset_password", "Reset Password"),)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='otps')
-    code = models.CharField(max_length=6)
+    code = models.CharField(max_length=255)  # bcrypt hash
     created_at = models.DateTimeField(auto_now_add=True)
     is_used = models.BooleanField(default=False)
+    otp_type = models.CharField(max_length=20, choices=OTP_TYPE_CHOICES, default='signup')
 
     def is_valid(self):
+        """OTP صالح لمدة 5 دقائق ولم يُستخدم من قبل"""
         return (
             not self.is_used and
             timezone.now() - self.created_at < timedelta(minutes=5)
         )
 
     def __str__(self):
-        return f"OTP for {self.user.email} - {self.code}"
+        return f"{self.otp_type} OTP for {self.user.email}"
