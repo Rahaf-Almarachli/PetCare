@@ -173,6 +173,7 @@ from rest_framework.decorators import api_view
 
 @api_view(['GET'])
 def api_root(request, format=None):
+    permission_classes = [permissions.AllowAny]
     return Response({
         'users': reverse('user-list', request=request, format=format),
         'pets': reverse('pet-list', request=request, format=format)
