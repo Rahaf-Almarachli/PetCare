@@ -174,4 +174,4 @@ from rest_framework.decorators import api_view,permission_classes
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def api_root(request, format=None):
-    return Response({"signup": request.build_absolute_uri("/api/signup/"),})
+    return Response({"signup": request.build_absolute_uri("/api/signup/request"),})
