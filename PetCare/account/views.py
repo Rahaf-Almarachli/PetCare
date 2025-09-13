@@ -171,7 +171,7 @@ class ResetPasswordView(APIView):
 from rest_framework.response import Response
 from rest_framework.decorators import api_view,permission_classes
 
-@api_view(['GET'])
+@api_view(['GET,POST'])
 @permission_classes([permissions.AllowAny])
 def api_root(request, format=None):
     return Response({"signup": request.build_absolute_uri("/api/signup/request"),})
