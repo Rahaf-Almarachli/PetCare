@@ -14,7 +14,7 @@ from .serializers import (
     VerifyOTPSerializer,
 )
 import bcrypt
-import transaction
+from django.db import transaction
 class SignupRequestView(APIView):
     permission_classes = [permissions.AllowAny]
 
