@@ -156,7 +156,6 @@ class ResetPasswordView(APIView):
             return Response({"error": "Invalid email or OTP."}, status=status.HTTP_400_BAD_REQUEST)
 
         if otp_obj.is_valid():
-            # استخدام bcrypt للتحقق من الرمز
             if bcrypt.checkpw(user_input_otp.encode('utf-8'), otp_obj.code.encode('utf-8')):
                 user.set_password(new_password)
                 user.save()
@@ -175,4 +174,4 @@ from rest_framework.decorators import api_view,permission_classes
 @api_view(['GET,POST'])
 @permission_classes([permissions.AllowAny])
 def api_root(request, format=None):
-    return Response({"signup": request.build_absolute_uri("/api/signup/request"),})
+    return Response({"welcome to petcare api"})
