@@ -13,4 +13,5 @@ tzdata==2025.2
 bcrypt
 whitenoise
 transaction
-dotenv
+python-dotenv
+
