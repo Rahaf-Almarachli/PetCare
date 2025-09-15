@@ -1,5 +1,5 @@
 from django.db import models
-from pets.models import Pet   # ربط مع جدول الحيوانات
+from pets.models import Pet   
 
 class Vaccination(models.Model):
     pet = models.ForeignKey(Pet, on_delete=models.CASCADE, related_name="vaccinations")

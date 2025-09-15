@@ -5,6 +5,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import generics, status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
+
+from PetCare import settings
 from .models import User, OTP
 from .serializers import (
     SignupSerializer,
@@ -15,6 +17,8 @@ from .serializers import (
 )
 import bcrypt
 from django.db import transaction
+
+
 class SignupRequestView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -23,40 +27,59 @@ class SignupRequestView(APIView):
         serializer.is_valid(raise_exception=True)
         
         email = serializer.validated_data.get('email')
-        
-        # التحقق من وجود المستخدم مسبقاً
-        if User.objects.filter(email=email).exists():
-            return Response({"error": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
 
-        with transaction.atomic():
-            # إنشاء مستخدم غير نشط
-            user = User.objects.create_user(
-                email=email,
-                password=serializer.validated_data.get('password'),
-                is_active=False,
-                first_name=serializer.validated_data.get('first_name'),
-                last_name=serializer.validated_data.get('last_name'),
-                phone=serializer.validated_data.get('phone'),
-                location=serializer.validated_data.get('location')
-            )
-            
-            # إنشاء رمز OTP وإرساله
-            otp = str(random.randint(100000, 999999))
-            hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-            
-            # حذف رموز OTP السابقة للمستخدم
-            OTP.objects.filter(user=user).delete()
-            
-            OTP.objects.create(user=user, code=hashed_otp)
+        try:
+            user = User.objects.get(email=email)
+            if user.is_active:
+                return Response({"error": "A user with this email already exists and is active."}, 
+                                status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # إعادة إرسال OTP للمستخدم غير المفعّل
+                otp = str(random.randint(100000, 999999))
+                hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                
+                OTP.objects.filter(user=user).delete()
+                OTP.objects.create(user=user, code=hashed_otp)
 
-            send_mail(
-                subject="Account Verification OTP",
-                message=f"Your OTP for account verification is: {otp}",
-                from_email="noreply@petcare.com",
-                recipient_list=[email],
-            )
+                send_mail(
+                    subject="Account Verification OTP",
+                    message=f"Your OTP for account verification is: {otp}",
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                )
 
-        return Response({"message": "OTP sent for account verification."}, status=status.HTTP_201_CREATED)
+                return Response({"message": "OTP re-sent for account verification."}, 
+                                status=status.HTTP_200_OK)
+
+        except User.DoesNotExist:
+            # إنشاء مستخدم جديد غير مفعّل
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    email=email,
+                    password=serializer.validated_data.get('password'),
+                    is_active=False,
+                    first_name=serializer.validated_data.get('first_name'),
+                    last_name=serializer.validated_data.get('last_name'),
+                    phone=serializer.validated_data.get('phone'),
+                    location=serializer.validated_data.get('location')
+                )
+                
+                otp = str(random.randint(100000, 999999))
+                hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                
+                OTP.objects.filter(user=user).delete()
+                OTP.objects.create(user=user, code=hashed_otp)
+
+                send_mail(
+                    subject="Account Verification OTP",
+                    message=f"Your OTP for account verification is: {otp}",
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                )
+
+        return Response({"message": "OTP sent for account verification."}, 
+                        status=status.HTTP_201_CREATED)
+
 
 class SignupVerifyView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -125,7 +148,7 @@ class ForgetPasswordView(APIView):
         send_mail(
             subject="Reset Password OTP",
             message=f"Your OTP is: {otp}",
-            from_email="noreply@petcare.com",
+            from_email = settings.DEFAULT_FROM_EMAIL,
             recipient_list=[email],
         )
 
@@ -175,3 +198,6 @@ from rest_framework.decorators import api_view,permission_classes
 @permission_classes([permissions.AllowAny])
 def api_root(request, format=None):
     return Response({"welcome to petcare api"})
+
+
+

@@ -6,7 +6,10 @@ from .views import (
     ForgetPasswordView,
     ResetPasswordView
 )
-from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
 
 urlpatterns = [
     # Signup (طلب OTP)
@@ -22,6 +25,7 @@ urlpatterns = [
     path('forgot-password/', ForgetPasswordView.as_view(), name='forgot-password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
 
-    # Refresh JWT Token
+    # JWT Token (Obtain & Refresh)
+    path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
