@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'appointment',
     'vaccination',
     'django_filters',
+    'storage',
 ]
 
 REST_FRAMEWORK = {

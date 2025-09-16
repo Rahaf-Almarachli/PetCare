@@ -24,7 +24,8 @@ class Pet(models.Model):
     pet_color = models.CharField(max_length=50, choices=COLOR_CHOICES)
     pet_gender = models.CharField(max_length=20)
     pet_birthday = models.DateField()
-    pet_photo = models.ImageField(upload_to='media/pets', blank=True, null=True)
+    #pet_photo = models.ImageField(upload_to='media/pets', blank=True, null=True)
+    pet_photo = models.URLField(max_length=500, blank=True, null=True)
 
     def __str__(self):
         return self.pet_name

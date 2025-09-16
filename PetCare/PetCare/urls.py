@@ -31,4 +31,5 @@ urlpatterns = [
      path('api/', include('appointment.urls')),
      path('api/vaccination/', include('vaccination.urls')),
     path('api-auth/', include('rest_framework.urls')),
+    path('api/storage/', include('storage.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

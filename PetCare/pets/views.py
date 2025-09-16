@@ -8,7 +8,7 @@ class PetViewSet(viewsets.ModelViewSet):
     queryset = Pet.objects.all()
     serializer_class = PetSerializer
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = (MultiPartParser, FormParser)
+    #parser_classes = (MultiPartParser, FormParser)
 
     def get_queryset(self):
         # يعرض الحيوانات الأليفة التابعة للمستخدم الحالي فقط
