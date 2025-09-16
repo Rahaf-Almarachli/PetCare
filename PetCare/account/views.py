@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework import generics, status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from PetCare import settings
+from PetCare.settings import DEFAULT_FROM_EMAIL
 from .models import User, OTP
 from .serializers import (
     SignupSerializer,
@@ -44,7 +44,7 @@ class SignupRequestView(APIView):
                 send_mail(
                     subject="Account Verification OTP",
                     message=f"Your OTP for account verification is: {otp}",
-                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    from_email=DEFAULT_FROM_EMAIL,
                     recipient_list=[email],
                 )
 
@@ -73,7 +73,7 @@ class SignupRequestView(APIView):
                 send_mail(
                     subject="Account Verification OTP",
                     message=f"Your OTP for account verification is: {otp}",
-                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    from_email=DEFAULT_FROM_EMAIL,
                     recipient_list=[email],
                 )
 
@@ -148,7 +148,7 @@ class ForgetPasswordView(APIView):
         send_mail(
             subject="Reset Password OTP",
             message=f"Your OTP is: {otp}",
-            from_email = settings.DEFAULT_FROM_EMAIL,
+            from_email = DEFAULT_FROM_EMAIL,
             recipient_list=[email],
         )
 
