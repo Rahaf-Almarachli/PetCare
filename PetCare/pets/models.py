@@ -18,9 +18,13 @@ class Pet(models.Model):
         ('Ginger','Ginger'),
         ('Silver','Silver')
     )
+    TYPE_CHOICES = (
+        ('Cat', 'Cat'),
+        ('Dog', 'Dog')
+    )
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pets')
     pet_name = models.CharField(max_length=100)
-    pet_type = models.CharField(max_length=50) 
+    pet_type = models.CharField(max_length=50, choices=TYPE_CHOICES) 
     pet_color = models.CharField(max_length=50, choices=COLOR_CHOICES)
     pet_gender = models.CharField(max_length=20)
     pet_birthday = models.DateField()

@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from .models import Appointment
 from .serializers import AppointmentSerializer
 from pets.models import Pet
+from django.shortcuts import get_object_or_404 # يجب استيرادها
 
 class AppointmentViewSet(viewsets.ModelViewSet):
     """
@@ -13,18 +14,25 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Return appointments only for the pets owned by the current user.
+        Return appointments only for the pets owned by the current user,
+        with an optional filter for a specific pet.
         """
         user = self.request.user
-        # جلب جميع الحيوانات الأليفة التي يملكها المستخدم الحالي
-        user_pets = Pet.objects.filter(owner=user)
-        # فلترة المواعيد بناءً على هذه الحيوانات الأليفة
-        return Appointment.objects.filter(pet__in=user_pets)
+        
+        # 1. فلترة المواعيد الخاصة بحيوانات المستخدم الحالي
+        queryset = Appointment.objects.filter(pet__owner=user)
+        
+        # 2. فلترة إضافية بناءً على معرّف الحيوان الأليف من الـ URL
+        pet_id = self.kwargs.get('pet_pk')
+        if pet_id:
+            # تحقق من أن الحيوان موجود ويملكه المستخدم قبل عرض مواعيده
+            get_object_or_404(Pet, id=pet_id, owner=self.request.user)
+            queryset = queryset.filter(pet_id=pet_id)
+            
+        return queryset
 
     def perform_create(self, serializer):
         """
         Create a new appointment with the correct pet instance.
         """
-        # الـ Serializer already handles the pet validation,
-        # so we just need to save the instance.
         serializer.save()
