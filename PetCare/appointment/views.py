@@ -2,10 +2,10 @@ import datetime
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
 from .models import Appointment
 from .serializers import AppointmentSerializer
 from pets.models import Pet
-from django.shortcuts import get_object_or_404
 
 class AppointmentViewSet(viewsets.ModelViewSet):
     """
@@ -16,48 +16,53 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Return appointments only for the pets owned by the current user,
-        with an optional filter for a specific pet.
+        Return appointments only for the pets owned by the current user.
         """
         user = self.request.user
-        
-        # فلترة المواعيد الخاصة بحيوانات المستخدم الحالي
-        queryset = Appointment.objects.filter(pet__owner=user)
-        
-        # فلترة إضافية بناءً على معرّف الحيوان الأليف من الـ URL
-        pet_id = self.kwargs.get('pet_pk')
-        if pet_id:
-            # تحقق من أن الحيوان موجود ويملكه المستخدم قبل عرض مواعيده
-            get_object_or_404(Pet, id=pet_id, owner=self.request.user)
-            queryset = queryset.filter(pet_id=pet_id)
-            
-        return queryset
+        return Appointment.objects.filter(pet__owner=user)
 
     def list(self, request, *args, **kwargs):
         """
         Get all appointments for the user, separated into upcoming and past.
         """
-        # استخدام دالة get_queryset لجلب جميع المواعيد الخاصة بالمستخدم الحالي
         queryset = self.get_queryset()
-        
         now = datetime.date.today()
         
         # تقسيم المواعيد بناءً على التاريخ
         upcoming_appointments = queryset.filter(date__gte=now).order_by('date')
         past_appointments = queryset.filter(date__lt=now).order_by('-date')
         
-        # تحويل المجموعات إلى صيغة JSON باستخدام الـ serializer
+        # تحويل المجموعات إلى بيانات JSON باستخدام الـ serializer
         upcoming_serializer = self.get_serializer(upcoming_appointments, many=True)
         past_serializer = self.get_serializer(past_appointments, many=True)
         
-        # إرجاع استجابة JSON تحتوي على كلا القائمتين
         return Response({
             'upcoming': upcoming_serializer.data,
             'past': past_serializer.data
         })
 
+    def create(self, request, *args, **kwargs):
+        """
+        Create a new appointment and return its full details.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # إرجاع بيانات الموعد الكاملة بدلاً من رسالة بسيطة
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         """
-        Create a new appointment with the correct pet instance.
+        Save the new appointment instance.
         """
         serializer.save()
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Retrieve a single appointment instance.
+        """
+        instance = get_object_or_404(self.get_queryset(), pk=kwargs['pk'])
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
