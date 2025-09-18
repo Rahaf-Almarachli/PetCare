@@ -13,5 +13,5 @@ tzdata==2025.2
 bcrypt
 whitenoise
 transaction
-drf-nested-routers==0.93.5
+drf-nested-routers
 
