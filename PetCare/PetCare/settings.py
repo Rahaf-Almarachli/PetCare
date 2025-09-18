@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     'vaccination',
     'django_filters',
     'storage',
+    'rest_framework_nested',
 ]
 
 REST_FRAMEWORK = {
