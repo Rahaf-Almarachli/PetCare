@@ -16,3 +16,6 @@ whitenoise
 transaction
 drf-nested-routers
 python-dotenv
+dj-database-url
+psycopg2-binary
+
