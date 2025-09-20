@@ -20,16 +20,25 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.urlpatterns import format_suffix_patterns
 from account import views
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView,
+)
 
 urlpatterns = [
     path('', views.api_root),
     path('admin/', admin.site.urls),
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
     path('api/', include('account.urls')),
     path('api/', include('pets.urls')),
     path('api/adoption/', include('adoption.urls')),
     path('api/mating/', include('mating.urls')),
-     path('api/', include('appointment.urls')),
-     path('api/', include('vaccination.urls')),
+    path('api/', include('appointment.urls')),
+    path('api/', include('vaccination.urls')),
     path('api-auth/', include('rest_framework.urls')),
     path('api/storage/', include('storage.urls')),
+    path('api/', include('alerts.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
