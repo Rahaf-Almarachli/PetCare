@@ -13,6 +13,7 @@ from datetime import timedelta
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+import dj_database_url  # New import
 
 # قم بتحميل متغيرات البيئة من ملف .env في جذر المشروع
 load_dotenv()
@@ -20,16 +21,13 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY')
 #SECRET_KEY = 'django-insecure-#@_9_zq&eioto*vd(3-qn)ayvtrs@f3@9sbj7)08doegcyax4k'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG') == 'True'
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
-AUTH_USER_MODEL= 'account.User'
+AUTH_USER_MODEL = 'account.User'
 
 # Email settings
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
@@ -74,7 +72,7 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'BLACKLIST_AFTER_ROTATION':True,
+    'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
     "AUTH_TOKEN_CLASSES": ('rest_framework_simplejwt.tokens.AccessToken',),
 }
@@ -110,14 +108,24 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'PetCare.wsgi.application'
 
-# Database
-# For production on Render, you would use dj_database_url here
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Database - This section has been updated to support Render and local development
+# For production on Render, it will use dj_database_url from the environment
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600
+        )
     }
-}
+else:
+    # Use SQLite for local development
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -144,6 +152,14 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Media files
+# Local media storage for development
+# NOTE: For Render's free plan, you must use a cloud storage solution like Cloudinary.
+# This local setup will not persist files on Render's ephemeral servers.
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True

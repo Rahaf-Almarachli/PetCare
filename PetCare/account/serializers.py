@@ -67,3 +67,12 @@ class ResetPasswordSerializer(serializers.Serializer):
 class VerifyOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=6)
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    full_name = serializers.ReadOnlyField()
+
+    class Meta:
+        model = User
+        fields = ['full_name', 'first_name', 'last_name', 'phone', 'location', 'email']
+        read_only_fields = ['full_name', 'email']

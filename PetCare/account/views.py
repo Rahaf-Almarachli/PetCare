@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import generics, status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.db import transaction
 
 from PetCare.settings import DEFAULT_FROM_EMAIL
 from .models import User, OTP
@@ -14,11 +15,13 @@ from .serializers import (
     ForgetPasswordSerializer,
     ResetPasswordSerializer,
     VerifyOTPSerializer,
+    UserProfileSerializer,
 )
 import bcrypt
-from django.db import transaction
 
-
+# -----------------------
+# Signup Request
+# -----------------------
 class SignupRequestView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -38,8 +41,9 @@ class SignupRequestView(APIView):
                 otp = str(random.randint(100000, 999999))
                 hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
                 
-                OTP.objects.filter(user=user).delete()
-                OTP.objects.create(user=user, code=hashed_otp)
+                with transaction.atomic():
+                    OTP.objects.filter(user=user).delete()
+                    OTP.objects.create(user=user, code=hashed_otp)
 
                 send_mail(
                     subject="Account Verification OTP",
@@ -77,10 +81,13 @@ class SignupRequestView(APIView):
                     recipient_list=[email],
                 )
 
-        return Response({"message": "OTP sent for account verification."}, 
-                        status=status.HTTP_201_CREATED)
+            return Response({"message": "OTP sent for account verification."}, 
+                            status=status.HTTP_201_CREATED)
 
 
+# -----------------------
+# Signup Verification
+# -----------------------
 class SignupVerifyView(APIView):
     permission_classes = [permissions.AllowAny]
     
@@ -107,12 +114,19 @@ class SignupVerifyView(APIView):
             otp_obj.save()
 
         refresh = RefreshToken.for_user(user)
+        user_profile_data = UserProfileSerializer(user).data
+        
         return Response({
             "message": "Account verified successfully.",
+            "user": user_profile_data,
             "access": str(refresh.access_token),
             "refresh": str(refresh),
         })
 
+
+# -----------------------
+# Login
+# -----------------------
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -121,11 +135,19 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
         refresh = RefreshToken.for_user(user)
+        
+        user_profile_data = UserProfileSerializer(user).data
+        
         return Response({
             "access": str(refresh.access_token),
             "refresh": str(refresh),
+            "user": user_profile_data,
         })
 
+
+# -----------------------
+# Forget Password
+# -----------------------
 class ForgetPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -137,7 +159,6 @@ class ForgetPasswordView(APIView):
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
-            #return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
             return Response({"message": "If a user with that email exists, an OTP has been sent."}, status=status.HTTP_200_OK)
 
         otp = str(random.randint(100000, 999999))
@@ -152,9 +173,12 @@ class ForgetPasswordView(APIView):
             recipient_list=[email],
         )
 
-        #return Response({"message": "OTP sent to your email."}, status=status.HTTP_200_OK)
-        return Response({"message": "If a user with that email exists, an OTP has been sent."}, status=status.HTTP_200_OK)   
+        return Response({"message": "If a user with that email exists, an OTP has been sent."}, status=status.HTTP_200_OK) 
+        
 
+# -----------------------
+# Reset Password
+# -----------------------
 class ResetPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -169,13 +193,11 @@ class ResetPasswordView(APIView):
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
-            #return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
             return Response({"error": "Invalid email or OTP."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             otp_obj = OTP.objects.filter(user=user, is_used=False).latest('created_at')
         except OTP.DoesNotExist:
-            #return Response({"error": "No valid OTP found."}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"error": "Invalid email or OTP."}, status=status.HTTP_400_BAD_REQUEST)
 
         if otp_obj.is_valid():
@@ -189,15 +211,26 @@ class ResetPasswordView(APIView):
                 return Response({"error": "Invalid OTP."}, status=status.HTTP_400_BAD_REQUEST)
         else:
             return Response({"error": "OTP expired or already used."}, status=status.HTTP_400_BAD_REQUEST)
-        
-    
-from rest_framework.response import Response
+
+
+# -----------------------
+# User Profile
+# -----------------------
+class UserProfileView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        # يعيد بيانات الملف الشخصي للمستخدم الحالي
+        return self.request.user
+
+
+# -----------------------
+# API Root
+# -----------------------
 from rest_framework.decorators import api_view,permission_classes
 
-@api_view(['GET,POST'])
+@api_view(['GET', 'POST'])
 @permission_classes([permissions.AllowAny])
 def api_root(request, format=None):
     return Response({"welcome to petcare api"})
-
-
-

@@ -34,6 +34,15 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+    
+    @property
+    def full_name(self):
+        """
+        خاصية لحساب الاسم الكامل للمستخدم.
+        """
+        # يتم دمج الاسم الأول والاسم الأخير مع مسافة بينهما
+        return f"{self.first_name} {self.last_name}".strip()
+
 
 class OTP(models.Model):
     OTP_TYPE_CHOICES = (
