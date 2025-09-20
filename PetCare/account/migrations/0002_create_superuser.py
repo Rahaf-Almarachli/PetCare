@@ -4,7 +4,7 @@ def create_superuser(apps, schema_editor):
     User = apps.get_model('account', 'User')
     if not User.objects.filter(email="admin@petcare.com").exists():
         User.objects.create_superuser(
-            email="ririkimv@gmail.com",
+            email="admin@petcare.com",
             password="12345678",
             first_name="Admin",
             last_name="User",
