@@ -40,5 +40,4 @@ urlpatterns = [
     path('api/', include('vaccination.urls')),
     path('api-auth/', include('rest_framework.urls')),
     path('api/storage/', include('storage.urls')),
-    path('api/', include('alerts.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
