@@ -74,7 +74,8 @@ class OTP(models.Model):
         ("reset_password", "Reset Password"),
     )
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='otps')
-    code = models.UUIDField(default=uuid.uuid4, editable=False) # استخدام UUID لمزيد من الأمان
+    #code = models.UUIDField(default=uuid.uuid4, editable=False) # 
+    code = models.CharField(max_length=255, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     is_used = models.BooleanField(default=False)
     otp_type = models.CharField(max_length=20, choices=OTP_TYPE_CHOICES, default='signup')
