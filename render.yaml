@@ -2,8 +2,8 @@ services:
   - type: web
     name: PetCare
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand:  "python -m gunicorn gunicorn PetCare.wsgi:application"
+    buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput
+    startCommand: gunicorn PetCare.wsgi:application
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: PetCare.settings
