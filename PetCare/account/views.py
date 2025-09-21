@@ -114,11 +114,9 @@ class SignupVerifyView(APIView):
             otp_obj.save()
 
         refresh = RefreshToken.for_user(user)
-        user_profile_data = UserProfileSerializer(user).data
         
         return Response({
             "message": "Account verified successfully.",
-            "user": user_profile_data,
             "access": str(refresh.access_token),
             "refresh": str(refresh),
         })
@@ -135,13 +133,9 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
         refresh = RefreshToken.for_user(user)
-        
-        user_profile_data = UserProfileSerializer(user).data
-        
         return Response({
             "access": str(refresh.access_token),
             "refresh": str(refresh),
-            "user": user_profile_data,
         })
 
 
