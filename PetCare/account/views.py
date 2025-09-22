@@ -310,6 +310,13 @@ class EmailChangeVerifyView(APIView):
             
         return Response({"message": "Email updated successfully."}, status=status.HTTP_200_OK)
 
+class ProfilePictureView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ProfilePictureSerializer
+
+    def get_object(self):
+        return self.request.user
+
 class UpdateProfilePictureView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
