@@ -5,8 +5,11 @@ from .views import (
     LoginView,
     ForgetPasswordView,
     ResetPasswordView,
-    UserProfileView
-)
+    UserProfileView,
+    UpdatePasswordView,
+    EmailChangeRequestView,
+    EmailChangeVerifyView
+    )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -30,4 +33,13 @@ urlpatterns = [
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('profile/', UserProfileView.as_view(), name='user-profile'),
+        # User Profile
+    path('profile/', UserProfileView.as_view(), name='user-profile'),
+    
+    # تحديث كلمة المرور
+    path('profile/update-password/', UpdatePasswordView.as_view(), name='update-password'),
+    
+    # تغيير البريد الإلكتروني
+    path('profile/email-change-request/', EmailChangeRequestView.as_view(), name='email-change-request'),
+    path('profile/email-change-verify/', EmailChangeVerifyView.as_view(), name='email-change-verify'),
 ]

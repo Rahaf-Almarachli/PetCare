@@ -68,7 +68,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 class OTP(models.Model):
     """
     نموذج لكلمة مرور لمرة واحدة (OTP) للتحقق من المستخدم.
-    """
+    
     OTP_TYPE_CHOICES = (
         ("signup", "Signup Verification"),
         ("reset_password", "Reset Password"),
@@ -81,7 +81,28 @@ class OTP(models.Model):
     otp_type = models.CharField(max_length=20, choices=OTP_TYPE_CHOICES, default='signup')
 
     def is_valid(self):
-        """OTP صالح لمدة 5 دقائق ولم يُستخدم من قبل"""
+        #OTP صالح لمدة 5 دقائق ولم يُستخدم من قبل
+        return (
+            not self.is_used and
+            timezone.now() - self.created_at < timedelta(minutes=5)
+        )
+
+    def __str__(self):
+        return f"{self.otp_type} OTP for {self.user.email}"
+    """
+    
+    OTP_TYPE_CHOICES = (
+        ("signup", "Signup Verification"),
+        ("reset_password", "Reset Password"),
+        ("email_change", "Email Change"),
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='otps')
+    code = models.CharField(max_length=255, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+    otp_type = models.CharField(max_length=20, choices=OTP_TYPE_CHOICES, default='signup')
+
+    def is_valid(self):
         return (
             not self.is_used and
             timezone.now() - self.created_at < timedelta(minutes=5)

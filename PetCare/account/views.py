@@ -211,20 +211,104 @@ class ResetPasswordView(APIView):
 # User Profile
 # -----------------------
 class UserProfileView(generics.RetrieveUpdateAPIView):
-    serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        # يعيد بيانات الملف الشخصي للمستخدم الحالي
         return self.request.user
+    
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return UserProfileUpdateSerializer
+        return UserProfileSerializer
+
+# -----------------------
+# تحديث كلمة المرور
+# -----------------------
+class UpdatePasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request):
+        serializer = PasswordChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user = request.user
+        old_password = serializer.validated_data.get('old_password')
+        new_password = serializer.validated_data.get('new_password')
+        
+        if not user.check_password(old_password):
+            return Response({"old_password": "Wrong password."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+        
+        return Response({"message": "Password updated successfully."}, status=status.HTTP_200_OK)
+
+# -----------------------
+# تغيير البريد الإلكتروني (طلب)
+# -----------------------
+class EmailChangeRequestView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = EmailChangeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        new_email = serializer.validated_data.get('new_email')
+
+        if User.objects.filter(email=new_email).exists():
+            return Response({"error": "This email is already in use."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        with transaction.atomic():
+            otp = str(random.randint(100000, 999999))
+            hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            
+            OTP.objects.filter(user=request.user, otp_type="email_change").delete()
+            OTP.objects.create(user=request.user, code=hashed_otp, otp_type="email_change")
+            
+            send_mail(
+                subject="Email Change Verification OTP",
+                message=f"Your OTP for email change is: {otp}",
+                from_email=DEFAULT_FROM_EMAIL,
+                recipient_list=[new_email],
+            )
+        
+        return Response({"message": "Verification code sent to your new email."}, status=status.HTTP_200_OK)
+
+# -----------------------
+# تغيير البريد الإلكتروني (تحقق)
+# -----------------------
+class EmailChangeVerifyView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = EmailChangeVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        new_email = serializer.validated_data.get('new_email')
+        user_input_otp = serializer.validated_data.get('otp')
+        
+        try:
+            otp_obj = OTP.objects.filter(user=request.user, otp_type="email_change").latest('created_at')
+        except OTP.DoesNotExist:
+            return Response({"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not otp_obj.is_valid() or not bcrypt.checkpw(user_input_otp.encode('utf-8'), otp_obj.code.encode('utf-8')):
+            return Response({"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+            user.email = new_email
+            user.save()
+            otp_obj.is_used = True
+            otp_obj.save()
+            
+        return Response({"message": "Email updated successfully."}, status=status.HTTP_200_OK)
 
 
 # -----------------------
 # API Root
 # -----------------------
 from rest_framework.decorators import api_view,permission_classes
-
 @api_view(['GET', 'POST'])
 @permission_classes([permissions.AllowAny])
 def api_root(request, format=None):
     return Response({"welcome to petcare api"})
+ 

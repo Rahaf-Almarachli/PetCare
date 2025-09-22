@@ -76,3 +76,38 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = ['full_name', 'first_name', 'last_name', 'phone', 'location', 'email']
         read_only_fields = ['full_name', 'email']
+
+# User Profile (للعرض فقط)
+class UserProfileSerializer(serializers.ModelSerializer):
+    full_name = serializers.ReadOnlyField()
+
+    class Meta:
+        model = User
+        fields = ['full_name', 'first_name', 'last_name', 'phone', 'location', 'email', 'profile_picture']
+        read_only_fields = ['full_name', 'email']
+
+# لتحديث الملف الشخصي (بما في ذلك الصورة)
+class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'phone', 'location', 'profile_picture']
+
+# لتحديث كلمة المرور
+class PasswordChangeSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True)
+    confirm_password = serializers.CharField(required=True)
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({"confirm_password": "New password and confirmation do not match."})
+        return data
+
+# لتغيير البريد الإلكتروني (طلب)
+class EmailChangeRequestSerializer(serializers.Serializer):
+    new_email = serializers.EmailField(required=True)
+
+# لتغيير البريد الإلكتروني (تحقق)
+class EmailChangeVerifySerializer(serializers.Serializer):
+    new_email = serializers.EmailField(required=True)
+    otp = serializers.CharField(required=True, max_length=6)
