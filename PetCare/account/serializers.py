@@ -83,9 +83,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['full_name', 'first_name', 'last_name', 'phone', 'location', 'email'#, 'profile_picture'
-                  ]
-        read_only_fields = ['full_name', 'email']
+        fields = ['full_name','phone', 'location']
+        read_only_fields = ['full_name']
 
 # لتحديث الملف الشخصي (بما في ذلك الصورة)
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
