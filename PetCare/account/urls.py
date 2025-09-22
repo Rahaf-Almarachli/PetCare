@@ -8,7 +8,10 @@ from .views import (
     UserProfileView,
     UpdatePasswordView,
     EmailChangeRequestView,
-    EmailChangeVerifyView
+    EmailChangeVerifyView,
+    UpdateProfilePictureView,
+    FullNameView,
+    FirstNameView
     )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -42,4 +45,7 @@ urlpatterns = [
     # تغيير البريد الإلكتروني
     path('profile/email-change-request/', EmailChangeRequestView.as_view(), name='email-change-request'),
     path('profile/email-change-verify/', EmailChangeVerifyView.as_view(), name='email-change-verify'),
+    path('profile/picture/', UpdateProfilePictureView.as_view(), name='update-profile-picture'),
+    path('profile/full-name/', FullNameView.as_view(), name='full-name'),
+    path('profile/first-name/', FirstNameView.as_view(), name='first-name'),
 ]

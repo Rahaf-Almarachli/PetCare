@@ -19,8 +19,10 @@ from .serializers import (
     UserProfileUpdateSerializer,
     PasswordChangeSerializer,
     EmailChangeRequestSerializer,
-    EmailChangeVerifySerializer
-
+    EmailChangeVerifySerializer,
+    ProfilePictureSerializer,
+    FullNameSerializer,
+    FirstNameSerializer
 )
 import bcrypt
 
@@ -225,6 +227,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         if self.request.method in ['PUT', 'PATCH']:
             return UserProfileUpdateSerializer
         return UserProfileSerializer
+    
 
 # -----------------------
 # تحديث كلمة المرور
@@ -307,6 +310,37 @@ class EmailChangeVerifyView(APIView):
             
         return Response({"message": "Email updated successfully."}, status=status.HTTP_200_OK)
 
+class UpdateProfilePictureView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request):
+        serializer = ProfilePictureSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response(
+            {"message": "Profile picture updated successfully."}, 
+            status=status.HTTP_200_OK
+        )
+    
+class FullNameView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = FullNameSerializer
+
+    def get_object(self):
+        """
+        يسترجع كائن المستخدم الحالي.
+        """
+        return self.request.user
+class FirstNameView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = FirstNameSerializer
+
+    def get_object(self):
+        """
+        يعيد كائن المستخدم الحالي.
+        """
+        return self.request.user
 
 # -----------------------
 # API Root
