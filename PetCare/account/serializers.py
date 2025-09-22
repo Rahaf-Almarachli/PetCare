@@ -83,14 +83,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['full_name', 'first_name', 'last_name', 'phone', 'location', 'email', 'profile_picture']
+        fields = ['full_name', 'first_name', 'last_name', 'phone', 'location', 'email'#, 'profile_picture'
+                  ]
         read_only_fields = ['full_name', 'email']
 
 # لتحديث الملف الشخصي (بما في ذلك الصورة)
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'phone', 'location', 'profile_picture']
+        fields = ['first_name', 'last_name', 'phone', 'location'#, 'profile_picture'
+                  ]
 
 # لتحديث كلمة المرور
 class PasswordChangeSerializer(serializers.Serializer):

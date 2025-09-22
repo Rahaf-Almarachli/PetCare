@@ -16,6 +16,11 @@ from .serializers import (
     ResetPasswordSerializer,
     VerifyOTPSerializer,
     UserProfileSerializer,
+    UserProfileUpdateSerializer,
+    PasswordChangeSerializer,
+    EmailChangeRequestSerializer,
+    EmailChangeVerifySerializer
+
 )
 import bcrypt
 
