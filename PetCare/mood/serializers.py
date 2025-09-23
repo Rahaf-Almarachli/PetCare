@@ -1,6 +1,7 @@
 # petcare/serializers.py
 from rest_framework import serializers
-from .models import Mood, Pet
+from .models import Mood
+from pets.models import Pet
 from django.shortcuts import get_object_or_404
 
 class MoodCreateSerializer(serializers.ModelSerializer):
