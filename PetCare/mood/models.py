@@ -1,6 +1,9 @@
 # petcare/models.py
 from django.db import models
 from django.utils import timezone
+from pets.models import Pet
+
+
 
 # Assuming your Pet model is already here
 # from .models import Pet
