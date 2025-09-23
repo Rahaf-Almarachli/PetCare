@@ -30,6 +30,7 @@ class Pet(models.Model):
     pet_birthday = models.DateField()
     #pet_photo = models.ImageField(upload_to='media/pets', blank=True, null=True)
     pet_photo = models.URLField(max_length=500, blank=True, null=True)
+    #qr_code_url = models.URLField(blank=True, null=True)
 
     def __str__(self):
         return self.pet_name
