@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'django_filters',
     'storage',
     'rest_framework_nested',
+    'mood',
 ]
 
 REST_FRAMEWORK = {
