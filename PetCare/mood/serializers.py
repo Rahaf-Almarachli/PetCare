@@ -19,7 +19,8 @@ class MoodCreateSerializer(serializers.ModelSerializer):
         pet_name = validated_data.pop('pet_name')
 
         try:
-            pet = Pet.objects.get(name=pet_name, owner=self.context['request'].user)
+            # تم تعديل هذا السطر
+            pet = Pet.objects.get(pet_name=pet_name, owner=self.context['request'].user)
         except Pet.DoesNotExist:
             raise serializers.ValidationError({"pet_name": "Pet with this name does not exist for the current user."})
 
