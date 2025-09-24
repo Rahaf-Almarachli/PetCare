@@ -3,7 +3,6 @@ from django.urls import path
 from .views import MoodCreateView, MoodHistoryView
 
 urlpatterns = [
-    # ... (باقي المسارات) ...
-    path('moods/create/', MoodCreateView.as_view(), name='mood-create'),
-    path('pets/<int:pet_id>/mood-history/', MoodHistoryView.as_view(), name='mood-history'),
+    path('moods/', MoodCreateView.as_view(), name='mood_create'),
+    path('moods/<int:pet_id>/history/', MoodHistoryView.as_view(), name='mood_history'),
 ]
