@@ -3,5 +3,5 @@ from .views import MoodCreateView, MoodHistoryView
 
 urlpatterns = [
     path('moods/create/', MoodCreateView.as_view(), name='mood-create'),
-    path('moods/history/<str:pet_name>/', MoodHistoryView.as_view(), name='mood-history'),
+    path('moods/history/<int:pet_id>/', MoodHistoryView.as_view(), name='mood-history'),
 ]
