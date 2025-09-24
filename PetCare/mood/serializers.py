@@ -20,10 +20,11 @@ class MoodCreateSerializer(serializers.ModelSerializer):
 
         return Mood.objects.create(pet=pet, **validated_data)
 
-
 class MoodResponseSerializer(serializers.ModelSerializer):
     pet_name = serializers.CharField(source='pet.pet_name', read_only=True)
+    date = serializers.DateField(read_only=True)
 
     class Meta:
         model = Mood
         fields = ['pet_name', 'mood', 'date', 'notes']
+
