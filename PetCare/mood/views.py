@@ -1,4 +1,3 @@
-# petcare/views.py
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
@@ -14,24 +13,23 @@ class MoodCreateView(APIView):
     def post(self, request):
         serializer = MoodCreateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save()  # date سيتم توليده تلقائياً من الموديل
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            mood = serializer.save()
+            return Response(MoodHistorySerializer(mood).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class MoodHistoryView(APIView):
-    """عرض المزاجات لآخر 7 أيام"""
+    """عرض المزاجات لآخر 7 أيام باستخدام اسم الحيوان"""
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, pet_id):
+    def get(self, request, pet_name):
         try:
-            pet = Pet.objects.get(id=pet_id, owner=self.request.user)
+            pet = Pet.objects.get(pet_name=pet_name, owner=self.request.user)
         except Pet.DoesNotExist:
             return Response({"error": "Pet not found or does not belong to the user."},
                             status=status.HTTP_404_NOT_FOUND)
 
         last_seven_days = date.today() - timedelta(days=7)
-
         moods = Mood.objects.filter(
             pet=pet,
             date__gte=last_seven_days
