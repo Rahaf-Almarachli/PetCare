@@ -4,7 +4,7 @@ from .models import Alert
 from .serializers import AlertSerializer
 
 
-class AlertCreateView(generics.ListCreateAPIView):
+class AlertCreateListView(generics.ListCreateAPIView):
     serializer_class = AlertSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -12,7 +12,7 @@ class AlertCreateView(generics.ListCreateAPIView):
         return Alert.objects.filter(owner=self.request.user)
 
 
-class AlertUpdateView(generics.RetrieveUpdateDestroyAPIView):
+class AlertUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = AlertSerializer
     permission_classes = [permissions.IsAuthenticated]
 

@@ -1,8 +1,8 @@
 # alerts/urls.py
 from django.urls import path
-from .views import AlertCreateView, AlertUpdateView
+from .views import AlertCreateListView, AlertUpdateDeleteView
 
 urlpatterns = [
-    path('alerts/', AlertCreateView.as_view(), name='alert-list-create'),
-    path('alerts/<int:pk>/', AlertUpdateView.as_view(), name='alert-update-delete'),
+    path('alerts/', AlertCreateListView.as_view(), name='alert-list-create'),
+    path('alerts/<int:pk>/', AlertUpdateDeleteView.as_view(), name='alert-update-delete'),
 ]

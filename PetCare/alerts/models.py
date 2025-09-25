@@ -1,12 +1,9 @@
 # alerts/models.py
 from django.db import models
-from django.contrib.auth.models import User
-from pets.models import Pet
-
+from django.conf import settings  # ✅ بدل من User الافتراضي
 
 class Alert(models.Model):
-    pet = models.ForeignKey(Pet, on_delete=models.CASCADE, related_name="alerts")
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="alerts")
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="alerts")
     name = models.CharField(max_length=100)  # اسم المنبّه
     time = models.TimeField()  # وقت التنبيه
     is_active = models.BooleanField(default=True)  # افتراضيًا ON
