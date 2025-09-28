@@ -5,46 +5,45 @@ from rest_framework import status
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Prefetch
 
-# ملاحظة: تم إزالة الاستيرادات لـ serializers, filters, و models من الأعلى
-# سنقوم باستيرادها داخل الدوال أو داخل الـ class definition فقط.
-
+# 🛑 الاستيرادات اللازمة (يفضل أن تكون في الأعلى)
+from pets.models import Pet
+from adoption.models import AdoptionPost
+from .serializers import (
+    PetAdoptionDetailSerializer, 
+    AdoptionPostExistingPetSerializer, 
+    NewPetAdoptionSerializer
+)
+from .filters import AdoptionFilter
 # ---------------------------------------------------------------------
 
 class AdoptionListView(generics.ListAPIView):
     """
     GET: عرض قائمة الحيوانات المعروضة للتبني.
+    
+    الاستعلام يبدأ من نموذج Pet ويتأكد من وجود منشور تبني مرتبط (AdoptionPost).
     """
     permission_classes = [permissions.IsAuthenticated]
     
-    # يجب تعريف هذه الكلاسات باستخدام مسار السلسلة النصية (String Path) 
-    # إذا كانت تسبب مشكلة، لكن في DRF الأفضل هو استيرادها محلياً.
-
-    def get_serializer_class(self):
-        # الاستيراد داخل الدالة عند الحاجة فقط!
-        from .serializers import PetAdoptionDetailSerializer
-        return PetAdoptionDetailSerializer
-    
-    def get_queryset(self):
-        # الاستيراد داخل الدالة عند الحاجة فقط!
-        from .models import AdoptionPost 
-        
-        # الاستعلام الأساسي: جلب جميع منشورات التبني النشطة بترتيب زمني عكسي
-        queryset = AdoptionPost.objects.select_related('pet', 'pet__owner').prefetch_related(
-            Prefetch('pet__vaccinations') 
-        ).filter(
-            pet__is_available_for_adoption=True
-        ).order_by('-created_at')
-        
-        posts = list(queryset)
-        return [post.pet for post in posts]
-
-    # يجب إعادة تعريف هذه الحقول مباشرة في الكلاس باستخدام الاستيراد المحلي
-    # (هذا هو المكان الذي كان يحتاج الاستيراد في الأعلى)
+    # الممارسة القياسية: تعيين الكلاسات مباشرة في الكلاس
+    serializer_class = PetAdoptionDetailSerializer
     filter_backends = [DjangoFilterBackend]
-    
-    def get_filterset_class(self):
-        from .filters import AdoptionFilter
-        return AdoptionFilter
+    filterset_class = AdoptionFilter
+
+    def get_queryset(self):
+        # 🛑 الإصلاح الجذري لمشكلة FieldError (AdoptionListView) 🛑
+        # 1. الاستعلام يبدأ من Pet (لأن السيريالايزر يتوقع Pet)
+        queryset = Pet.objects.filter(
+            # 2. التصفية بناءً على وجود العلاقة العكسية (adoption_post)
+            # نفترض أن العلاقة العكسية لـ AdoptionPost.pet هي 'adoption_post'
+            adoption_post__isnull=False 
+        ).select_related(
+            'owner' # تحسين الأداء: جلب المالك
+        ).prefetch_related(
+            'vaccination_set' # تحسين الأداء: جلب اللقاحات
+            # لا حاجة لاستخدام Prefetch لـ AdoptionPost لأنه يتم الوصول إليه عبر العلاقة العكسية
+        ).order_by('-adoption_post__created_at')
+        
+        return queryset
 
 
 class CreateAdoptionPostView(APIView):
@@ -54,20 +53,30 @@ class CreateAdoptionPostView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        # الاستيراد داخل الدالة عند الحاجة فقط!
-        from .serializers import AdoptionPostExistingPetSerializer, NewPetAdoptionSerializer, PetAdoptionDetailSerializer
+        data = request.data
         
-        if 'pet_id' in request.data:
-            serializer = AdoptionPostExistingPetSerializer(data=request.data, context={'request': request})
-        elif 'pet_name' in request.data and 'pet_type' in request.data and 'owner_message' in request.data:
-            serializer = NewPetAdoptionSerializer(data=request.data, context={'request': request})
+        # تحديد أي سيريالايزر سيتم استخدامه بناءً على البيانات المرسلة
+        if 'pet_id' in data:
+            # حالة: اختيار حيوان موجود
+            serializer_class = AdoptionPostExistingPetSerializer
+        elif all(k in data for k in ['pet_name', 'pet_type', 'owner_message']):
+            # حالة: إنشاء حيوان جديد ومنشور تبني
+            serializer_class = NewPetAdoptionSerializer
         else:
-            return Response({"error": "البيانات المرسلة غير صحيحة."}, 
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Invalid data"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        serializer = serializer_class(data=data, context={'request': request})
+        
         if serializer.is_valid():
+            # حفظ المنشور والحصول على كائن AdoptionPost (بناءً على التعديلات السابقة)
             adoption_post = serializer.save()
+            
+            # نحصل على كائن Pet من كائن AdoptionPost لغرض العرض
             response_serializer = PetAdoptionDetailSerializer(adoption_post.pet)
+            
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
