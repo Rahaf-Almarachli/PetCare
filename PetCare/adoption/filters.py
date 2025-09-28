@@ -1,43 +1,25 @@
 import django_filters
-from pets.models import AdoptionPost, Pet
-# لا نحتاج Q هنا لأن django_filters يتعامل معها تلقائياً
+# 🛑 تم إصلاح الاستيراد: يتم استيراد Pet من pets.models و AdoptionPost من adoption.models
+from pets.models import Pet
+from adoption.models import AdoptionPost 
+
 
 class AdoptionFilter(django_filters.FilterSet):
-    """
-    فئة فلترة مخصصة للحيوانات المعروضة للتبني.
-    """
-    
-    # 1. فلترة الموقع: تستخدم CharFilter للبحث النصي (كتابة حرة)
-    location = django_filters.CharFilter(
-        # المسار للوصول إلى الموقع في نموذج المالك (owner)
-        field_name='pet__owner__location', 
-        # تعبير البحث: icontains (يحتوي على, غير حساس لحالة الأحرف)
-        lookup_expr='icontains',
-        label="Location (Search Text)" 
-    )
-
-    # 2. فلترة النوع (مطابقة تامة، عادة من قائمة منسدلة)
+    # مثال على فلترة بناءً على نوع الحيوان الأليف
     pet_type = django_filters.CharFilter(
-        field_name='pet__pet_type', 
-        lookup_expr='exact',
-        label="Pet Type"
+        field_name='pet_type', 
+        lookup_expr='iexact'
     )
     
-    # 3. فلترة اللون (مطابقة تامة، عادة من قائمة منسدلة)
-    pet_color = django_filters.CharFilter(
-        field_name='pet__pet_color', 
-        lookup_expr='exact',
-        label="Pet Color"
-    )
-    
-    # 4. فلترة الجنس (مطابقة تامة، عادة من قائمة منسدلة)
+    # مثال على فلترة بناءً على الجنس
     pet_gender = django_filters.CharFilter(
-        field_name='pet__pet_gender', 
-        lookup_expr='exact',
-        label="Pet Gender"
+        field_name='pet_gender', 
+        lookup_expr='iexact'
     )
+    
+    # يمكنك إضافة المزيد من الفلاتر هنا...
 
     class Meta:
-        model = AdoptionPost
-        # يتم استخدام الحقول كـ Query Parameters في الـ URL
-        fields = ['pet_type', 'pet_color', 'pet_gender', 'location']
+        # الفلتر يعتمد على نموذج Pet لأن AdoptionListView يرجع كائنات Pet
+        model = Pet 
+        fields = ['pet_type', 'pet_gender']
