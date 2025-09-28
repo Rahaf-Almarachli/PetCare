@@ -1,11 +1,10 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import AdoptionPostViewSet
-
-router = DefaultRouter()
-router.register(r'adoption-posts', AdoptionPostViewSet, basename='adoption-post')
+from django.urls import path
+from .views import AdoptionListView, CreateAdoptionPostView
 
 urlpatterns = [
-    path('', include(router.urls)),
+    # API لعرض جميع الحيوانات المتاحة للتبني
+    path('adoptions/', AdoptionListView.as_view(), name='adoption-list'),
+    
+    # API لإنشاء منشور تبني جديد (سواء لحيوان موجود أو جديد)
+    path('adoptions/create/', CreateAdoptionPostView.as_view(), name='adoption-create'),
 ]
-
