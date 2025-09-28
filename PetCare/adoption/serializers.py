@@ -6,28 +6,18 @@ from django.db import transaction
 
 # مُسلسل لبيانات اللقاح (يستخدم داخل مُسلسل العرض الرئيسي)
 class VaccinationSerializer(serializers.ModelSerializer):
-    # ملاحظة: تم تعديل أسماء الحقول لتتوافق مع نموذج Vaccination الذي أرسلته (vacc_name, vacc_date)
     class Meta:
         model = Vaccination
         fields = ['vacc_name', 'vacc_date', 'vacc_certificate']
 
 # ----------------------------------------------------
-# 1. مُسلسل لعرض الحيوانات المتاحة للمتبني
+# 1. مُسلسل لعرض الحيوانات المتاحة للمتبني (بدون تغيير)
 # ----------------------------------------------------
 class PetAdoptionDetailSerializer(serializers.ModelSerializer):
-    # جلب الموقع من نموذج المالك (Owner)
     owner_location = serializers.CharField(source='owner.location', read_only=True)
-    
-    # جلب سجلات اللقاح
     vaccinations = VaccinationSerializer(many=True, read_only=True)
-    
-    # جلب رسالة المالك من نموذج AdoptionPost المرتبط
     owner_message = serializers.CharField(source='adoption_post.owner_message', read_only=True)
-    
-    # جلب العمر باستخدام الخاصية property age في نموذج Pet
     age = serializers.ReadOnlyField() 
-    
-    # جلب صورة الحيوان
     pet_photo = serializers.URLField(read_only=True)
 
     class Meta:
@@ -42,7 +32,6 @@ class PetAdoptionDetailSerializer(serializers.ModelSerializer):
 # 2. مُسلسل لإنشاء منشور تبني جديد (الحالة 1: اختيار حيوان موجود)
 # ----------------------------------------------------
 class AdoptionPostExistingPetSerializer(serializers.ModelSerializer):
-    # نطلب معرف الحيوان الأليف ورسالة المالك
     pet_id = serializers.IntegerField(write_only=True)
     
     class Meta:
@@ -61,10 +50,10 @@ class AdoptionPostExistingPetSerializer(serializers.ModelSerializer):
         if hasattr(pet, 'adoption_post'):
             raise serializers.ValidationError({"pet_id": "This pet is already posted for adoption."})
             
-        # نضمن تحديث حالة الحيوان إلى متاح للتبني
-        pet.is_available_for_adoption = True
-        pet.save()
-            
+        # 🛑 تم حذف محاولة تعيين pet.is_available_for_adoption = True 🛑
+        # pet.is_available_for_adoption = True 
+        # pet.save()
+        
         return AdoptionPost.objects.create(pet=pet, **validated_data)
 
 
@@ -88,18 +77,18 @@ class NewPetAdoptionSerializer(serializers.Serializer):
         user = self.context['request'].user
         
         # 1. إنشاء سجل الحيوان الأليف أولاً
-        pet_data = {k: validated_data[k] for k in validated_data if k != 'owner_message'}
+        owner_message = validated_data.pop('owner_message')
+        pet_data = validated_data
         
-        # نضمن أن الحيوان الجديد متاح للتبني افتراضياً
+        # 🛑 تم حذف is_available_for_adoption=True لتجنب TypeError 🛑
         pet = Pet.objects.create(
             owner=user, 
-            is_available_for_adoption=True,
             **pet_data
         )
         
         # 2. إنشاء منشور التبني وربطه بالحيوان الجديد
         adoption_post = AdoptionPost.objects.create(
             pet=pet,
-            owner_message=validated_data['owner_message']
+            owner_message=owner_message
         )
         return adoption_post
