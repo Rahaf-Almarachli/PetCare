@@ -35,61 +35,52 @@ class SignupRequestView(APIView):
     def post(self, request):
         serializer = SignupSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
-        email = serializer.validated_data.get('email')
+
+        email = serializer.validated_data.get("email")
 
         try:
             user = User.objects.get(email=email)
             if user.is_active:
-                return Response({"error": "A user with this email already exists and is active."}, 
-                                status=status.HTTP_400_BAD_REQUEST)
-            else:
-                # إعادة إرسال OTP للمستخدم غير المفعّل
-                otp = str(random.randint(100000, 999999))
-                hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                
-                with transaction.atomic():
-                    OTP.objects.filter(user=user).delete()
-                    OTP.objects.create(user=user, code=hashed_otp)
-
-                send_mail(
-                    subject="Account Verification OTP",
-                    message=f"Your OTP for account verification is: {otp}",
-                    from_email=DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
+                return Response(
+                    {"error": "A user with this email already exists and is active."},
+                    status=status.HTTP_400_BAD_REQUEST
                 )
-
-                return Response({"message": "OTP re-sent for account verification."}, 
-                                status=status.HTTP_200_OK)
-
         except User.DoesNotExist:
-            # إنشاء مستخدم جديد غير مفعّل
-            with transaction.atomic():
-                user = User.objects.create_user(
-                    email=email,
-                    password=serializer.validated_data.get('password'),
-                    is_active=False,
-                    first_name=serializer.validated_data.get('first_name'),
-                    last_name=serializer.validated_data.get('last_name'),
-                    phone=serializer.validated_data.get('phone'),
-                    location=serializer.validated_data.get('location')
-                )
-                
-                otp = str(random.randint(100000, 999999))
-                hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                
-                OTP.objects.filter(user=user).delete()
-                OTP.objects.create(user=user, code=hashed_otp)
+            user = User.objects.create_user(
+                email=email,
+                password=serializer.validated_data.get("password"),
+                is_active=False,
+                first_name=serializer.validated_data.get("first_name"),
+                last_name=serializer.validated_data.get("last_name"),
+                phone=serializer.validated_data.get("phone"),
+                location=serializer.validated_data.get("location")
+            )
 
-                send_mail(
-                    subject="Account Verification OTP",
-                    message=f"Your OTP for account verification is: {otp}",
-                    from_email=DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
-                )
+        # OTP
+        otp = str(random.randint(100000, 999999))
+        hashed_otp = bcrypt.hashpw(otp.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
-            return Response({"message": "OTP sent for account verification."}, 
-                            status=status.HTTP_201_CREATED)
+        OTP.objects.filter(user=user, otp_type="signup").delete()
+        OTP.objects.create(user=user, code=hashed_otp, otp_type="signup")
+
+        # إرسال الإيميل
+        try:
+            send_mail(
+                subject="Account Verification OTP",
+                message=f"Your OTP for account verification is: {otp}",
+                from_email=DEFAULT_FROM_EMAIL,
+                recipient_list=[email],
+                fail_silently=False
+            )
+        except Exception as e:
+            print(f"Email sending failed: {e}")
+            return Response(
+                {"warning": "User created but OTP email could not be sent."},
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response({"message": "OTP sent for account verification."}, status=status.HTTP_201_CREATED)
+
 
 
 # -----------------------
