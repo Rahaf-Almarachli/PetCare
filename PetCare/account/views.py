@@ -7,6 +7,7 @@ from rest_framework import generics, status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
 from django.conf import settings # لتجنب استيراد DEFAULT_FROM_EMAIL مباشرة من PetCare
+import smtplib
 
 from .models import User, OTP
 from .serializers import (
@@ -34,13 +35,13 @@ DEFAULT_FROM_EMAIL = settings.DEFAULT_FROM_EMAIL
 class SignupRequestView(APIView):
     permission_classes = [permissions.AllowAny]
 
-    @transaction.atomic # تطبيق المعاملة الذرية على مستوى الدالة
+    @transaction.atomic
     def post(self, request):
         serializer = SignupSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         email = serializer.validated_data.get("email")
-        user_created = False # لتتبع ما إذا كنا أنشأنا مستخدماً جديداً
+        user_created = False 
 
         try:
             user = User.objects.get(email=email)
@@ -62,14 +63,14 @@ class SignupRequestView(APIView):
             )
             user_created = True
 
-        # توليد وحفظ OTP (مغطى بالمعاملة الذرية)
+        # توليد وحفظ OTP
         otp = str(random.randint(100000, 999999))
         hashed_otp = bcrypt.hashpw(otp.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
         OTP.objects.filter(user=user, otp_type="signup").delete()
         OTP.objects.create(user=user, code=hashed_otp, otp_type="signup")
 
-        # إرسال الإيميل (معالج الأخطاء)
+        # 🛑 إرسال الإيميل (معالج أخطاء أكثر تفصيلاً) 🛑
         try:
             send_mail(
                 subject="Account Verification OTP",
@@ -78,22 +79,22 @@ class SignupRequestView(APIView):
                 recipient_list=[email],
                 fail_silently=False
             )
+        except smtplib.SMTPAuthenticationError:
+            # هذا الخطأ يحدث عادة عندما تكون كلمة المرور غير صحيحة
+            print("CRITICAL SMTP AUTH ERROR: Check EMAIL_HOST_PASSWORD (App Password).")
+            error_message = "Authentication failed. Check email server credentials."
+            transaction.set_rollback(True)
+            return Response({"error": error_message}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
         except Exception as e:
-            print(f"SMTP Error during signup/resend: {e}")
+            # هذا يغطي أخطاء المهلة أو الاتصال العام
+            error_type = type(e).__name__
+            print(f"General SMTP Error ({error_type}): {e}")
+            error_message = f"Failed to send OTP. Server connection error ({error_type})."
             
-            # 🛑 إذا فشل الإرسال بعد إنشاء مستخدم جديد، نقوم بإلغاء العملية 🛑
-            if user_created:
-                transaction.set_rollback(True) # إلغاء إنشاء المستخدم والـ OTP
-                return Response(
-                    {"error": "Failed to send OTP. Please check server's email configuration."},
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE
-                )
-            
-            # إذا كان المستخدم موجوداً (حالة إعادة الإرسال)، نرجع 503
-            return Response(
-                {"error": "Failed to re-send OTP. Please check server's email configuration."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
+            # 🛑 إلغاء العملية في حالة فشل الإرسال 🛑
+            transaction.set_rollback(True) 
+            return Response({"error": error_message}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         
         # رسالة الرد تعتمد على الحالة
         if user_created:
