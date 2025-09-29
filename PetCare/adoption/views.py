@@ -5,7 +5,7 @@ from rest_framework import status
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Prefetch
 
-# 🛑 الاستيرادات اللازمة (يفضل أن تكون في الأعلى)
+# الاستيرادات اللازمة
 from pets.models import Pet
 from adoption.models import AdoptionPost
 from .serializers import (
@@ -30,17 +30,14 @@ class AdoptionListView(generics.ListAPIView):
     filterset_class = AdoptionFilter
 
     def get_queryset(self):
-        # 🛑 الإصلاح الجذري لمشكلة FieldError (AdoptionListView) 🛑
-        # 1. الاستعلام يبدأ من Pet (لأن السيريالايزر يتوقع Pet)
+        # الاستعلام يبدأ من Pet (لأن السيريالايزر يتوقع Pet)
         queryset = Pet.objects.filter(
-            # 2. التصفية بناءً على وجود العلاقة العكسية (adoption_post)
-            # نفترض أن العلاقة العكسية لـ AdoptionPost.pet هي 'adoption_post'
+            # التصفية بناءً على وجود العلاقة العكسية (adoption_post)
             adoption_post__isnull=False 
         ).select_related(
             'owner' # تحسين الأداء: جلب المالك
         ).prefetch_related(
-            'vaccination_set' # تحسين الأداء: جلب اللقاحات
-            # لا حاجة لاستخدام Prefetch لـ AdoptionPost لأنه يتم الوصول إليه عبر العلاقة العكسية
+            'vaccinations' # 🛑 تم التعديل: استخدام 'vaccinations' بدلاً من 'vaccination_set'
         ).order_by('-adoption_post__created_at')
         
         return queryset
@@ -64,14 +61,14 @@ class CreateAdoptionPostView(APIView):
             serializer_class = NewPetAdoptionSerializer
         else:
             return Response(
-                {"error": "Invalid data"}, 
+                {"error": "Invalid data format. Requires 'pet_id' or a new pet's details ('pet_name', 'pet_type', 'owner_message')."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         serializer = serializer_class(data=data, context={'request': request})
         
         if serializer.is_valid():
-            # حفظ المنشور والحصول على كائن AdoptionPost (بناءً على التعديلات السابقة)
+            # حفظ المنشور والحصول على كائن AdoptionPost 
             adoption_post = serializer.save()
             
             # نحصل على كائن Pet من كائن AdoptionPost لغرض العرض
