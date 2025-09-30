@@ -6,8 +6,8 @@ from rest_framework.response import Response
 from rest_framework import generics, status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
-from django.conf import settings # لتجنب استيراد DEFAULT_FROM_EMAIL مباشرة من PetCare
-import smtplib
+from django.conf import settings
+import smtplib # ترك الاستيراد لا يضر، لكن لم نعد نستخدمه
 
 from .models import User, OTP
 from .serializers import (
@@ -65,47 +65,29 @@ class SignupRequestView(APIView):
 
         # توليد وحفظ OTP
         otp = str(random.randint(100000, 999999))
+        
+        # 🟢 الحل: طباعة OTP في الكونسول وإلغاء محاولة الإرسال 🟢
+        # هذا يسمح بإكمال التسجيل بالرغم من فشل SMTP
+        print(f"DEBUG OTP (Signup) for {email}: {otp}")
+        
         hashed_otp = bcrypt.hashpw(otp.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
         OTP.objects.filter(user=user, otp_type="signup").delete()
         OTP.objects.create(user=user, code=hashed_otp, otp_type="signup")
 
-        # 🛑 إرسال الإيميل (معالج أخطاء أكثر تفصيلاً) 🛑
-        try:
-            """
-            send_mail(
-                subject="Account Verification OTP",
-                message=f"Your OTP for account verification is: {otp}",
-                from_email=DEFAULT_FROM_EMAIL,
-                recipient_list=[email],
-                fail_silently=False
-            )
-            """
-            print("Skipping email sending...")
-            return Response({"status": "ok, email skipped"})
-
-        except smtplib.SMTPAuthenticationError:
-            # هذا الخطأ يحدث عادة عندما تكون كلمة المرور غير صحيحة
-            print("CRITICAL SMTP AUTH ERROR: Check EMAIL_HOST_PASSWORD (App Password).")
-            error_message = "Authentication failed. Check email server credentials."
-            transaction.set_rollback(True)
-            return Response({"error": error_message}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        
-        except Exception as e:
-            # هذا يغطي أخطاء المهلة أو الاتصال العام
-            error_type = type(e).__name__
-            print(f"General SMTP Error ({error_type}): {e}")
-            error_message = f"Failed to send OTP. Server connection error ({error_type})."
-            
-            # 🛑 إلغاء العملية في حالة فشل الإرسال 🛑
-            transaction.set_rollback(True) 
-            return Response({"error": error_message}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        # 🛑 تم إلغاء كتلة try/except لإرسال الإيميل بالكامل 🛑
         
         # رسالة الرد تعتمد على الحالة
         if user_created:
-            return Response({"message": "OTP sent for account verification."}, status=status.HTTP_201_CREATED)
+            return Response(
+                {"message": "User created. OTP generated (Check server logs)."}, 
+                status=status.HTTP_201_CREATED
+            )
         else:
-            return Response({"message": "OTP re-sent for account verification."}, status=status.HTTP_200_OK)
+            return Response(
+                {"message": "OTP re-sent (Check server logs)."}, 
+                status=status.HTTP_200_OK
+            )
 
 
 # -----------------------
@@ -123,11 +105,13 @@ class SignupVerifyView(APIView):
         
         try:
             user = User.objects.get(email=email)
-            # التأكد من البحث عن رمز التسجيل
             otp_obj = OTP.objects.filter(user=user, otp_type='signup').latest('created_at')
         except (User.DoesNotExist, OTP.DoesNotExist):
             return Response({"error": "Invalid email or OTP."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 🟢 طباعة إضافية للمساعدة في التحقق 🟢
+        print(f"DEBUG VERIFY: Attempting to verify {email} with OTP: {user_input_otp}")
+        
         # التحقق من الصلاحية والرمز
         if not otp_obj.is_valid() or not bcrypt.checkpw(user_input_otp.encode('utf-8'), otp_obj.code.encode('utf-8')):
              # يتم التحقق هنا من صلاحية الرمز وكونه غير مستخدم
@@ -190,28 +174,17 @@ class ForgetPasswordView(APIView):
 
         # إنشاء وحفظ الـ OTP (ضمن المعاملة الذرية)
         otp = str(random.randint(100000, 999999))
+        
+        # 🟢 الحل: طباعة OTP في الكونسول وإلغاء محاولة الإرسال 🟢
+        print(f"DEBUG OTP (Password Reset) for {email}: {otp}")
+        
         hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         OTP.objects.filter(user=user, otp_type='reset_password').delete()
         OTP.objects.create(user=user, code=hashed_otp, otp_type='reset_password')
 
-        try:
-            send_mail(
-                subject="Reset Password OTP",
-                message=f"Your OTP is: {otp}",
-                from_email = DEFAULT_FROM_EMAIL,
-                recipient_list=[email],
-                fail_silently=False, 
-            )
-        except Exception as e:
-            # 🛑 فشل الإرسال: يجب إلغاء المعاملة (Rollback) 🛑
-            print(f"SMTP Error during password reset: {e}") 
-            transaction.set_rollback(True)
-            return Response(
-                {"error": "Failed to send OTP. Please check server's email configuration."}, 
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
+        # 🛑 تم إلغاء كتلة try/except لإرسال الإيميل بالكامل 🛑
 
-        return Response({"message": "If a user with that email exists, an OTP has been sent."}, status=status.HTTP_200_OK) 
+        return Response({"message": "If a user with that email exists, OTP generated (Check server logs)."}, status=status.HTTP_200_OK) 
         
 
 # -----------------------
@@ -311,106 +284,4 @@ class EmailChangeRequestView(APIView):
         if User.objects.filter(email=new_email).exists():
             return Response({"error": "This email is already in use."}, status=status.HTTP_400_BAD_REQUEST)
         
-        # توليد وحفظ OTP (ضمن المعاملة الذرية)
-        otp = str(random.randint(100000, 999999))
-        hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        
-        OTP.objects.filter(user=request.user, otp_type="email_change").delete()
-        OTP.objects.create(user=request.user, code=hashed_otp, otp_type="email_change")
-        
-        try:
-            send_mail(
-                subject="Email Change Verification OTP",
-                message=f"Your OTP for email change is: {otp}",
-                from_email=DEFAULT_FROM_EMAIL,
-                recipient_list=[new_email],
-                fail_silently=False
-            )
-        except Exception as e:
-            # 🛑 فشل الإرسال: يجب إلغاء المعاملة (Rollback) 🛑
-            print(f"SMTP Error during email change request: {e}") 
-            transaction.set_rollback(True)
-            return Response(
-                {"error": "Failed to send verification code. Check email configuration."}, 
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-        
-        return Response({"message": "Verification code sent to your new email."}, status=status.HTTP_200_OK)
-
-# -----------------------
-# تغيير البريد الإلكتروني (تحقق)
-# -----------------------
-class EmailChangeVerifyView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        serializer = EmailChangeVerifySerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        new_email = serializer.validated_data.get('new_email')
-        user_input_otp = serializer.validated_data.get('otp')
-        
-        try:
-            otp_obj = OTP.objects.filter(user=request.user, otp_type="email_change").latest('created_at')
-        except OTP.DoesNotExist:
-            return Response({"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if not otp_obj.is_valid() or not bcrypt.checkpw(user_input_otp.encode('utf-8'), otp_obj.code.encode('utf-8')):
-            return Response({"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
-
-        with transaction.atomic():
-            user = request.user
-            user.email = new_email
-            user.save()
-            otp_obj.is_used = True
-            otp_obj.save()
-            
-        return Response({"message": "Email updated successfully."}, status=status.HTTP_200_OK)
-
-class ProfilePictureView(generics.RetrieveAPIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = ProfilePictureSerializer
-
-    def get_object(self):
-        return self.request.user
-
-class UpdateProfilePictureView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def put(self, request):
-        serializer = ProfilePictureSerializer(request.user, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        
-        return Response(
-            {"message": "Profile picture updated successfully."}, 
-            status=status.HTTP_200_OK
-        )
-        
-class FullNameView(generics.RetrieveAPIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = FullNameSerializer
-
-    def get_object(self):
-        """
-        يسترجع كائن المستخدم الحالي.
-        """
-        return self.request.user
-
-class FirstNameView(generics.RetrieveAPIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = FirstNameSerializer
-
-    def get_object(self):
-        """
-        يعيد كائن المستخدم الحالي.
-        """
-        return self.request.user
-
-# -----------------------
-# API Root
-# -----------------------
-from rest_framework.decorators import api_view,permission_classes
-@api_view(['GET', 'POST'])
-@permission_classes([permissions.AllowAny])
-def api_root(request, format=None):
-    return Response({"welcome to petcare api"})
+        # توليد وحفظ OTP (ضمن المعاملة
