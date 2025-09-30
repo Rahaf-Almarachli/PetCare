@@ -284,4 +284,98 @@ class EmailChangeRequestView(APIView):
         if User.objects.filter(email=new_email).exists():
             return Response({"error": "This email is already in use."}, status=status.HTTP_400_BAD_REQUEST)
         
-        # توليد وحفظ OTP (ضمن المعاملة
+        # توليد وحفظ OTP (ضمن المعاملة الذرية)
+        otp = str(random.randint(100000, 999999))
+        
+        # 🟢 الحل: طباعة OTP في الكونسول وإلغاء محاولة الإرسال 🟢
+        print(f"DEBUG OTP (Email Change) for {new_email}: {otp}")
+        
+        hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
+        OTP.objects.filter(user=request.user, otp_type="email_change").delete()
+        OTP.objects.create(user=request.user, code=hashed_otp, otp_type="email_change")
+        
+        # 🛑 تم إلغاء كتلة try/except لإرسال الإيميل بالكامل 🛑
+        
+        return Response(
+            {"message": "Verification code generated (Check server logs)."}, 
+            status=status.HTTP_200_OK
+        )
+
+# -----------------------
+# تغيير البريد الإلكتروني (تحقق)
+# -----------------------
+class EmailChangeVerifyView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = EmailChangeVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        new_email = serializer.validated_data.get('new_email')
+        user_input_otp = serializer.validated_data.get('otp')
+        
+        try:
+            otp_obj = OTP.objects.filter(user=request.user, otp_type="email_change").latest('created_at')
+        except OTP.DoesNotExist:
+            return Response({"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not otp_obj.is_valid() or not bcrypt.checkpw(user_input_otp.encode('utf-8'), otp_obj.code.encode('utf-8')):
+            return Response({"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+            user.email = new_email
+            user.save()
+            otp_obj.is_used = True
+            otp_obj.save()
+            
+        return Response({"message": "Email updated successfully."}, status=status.HTTP_200_OK)
+
+class ProfilePictureView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ProfilePictureSerializer
+
+    def get_object(self):
+        return self.request.user
+
+class UpdateProfilePictureView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request):
+        serializer = ProfilePictureSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response(
+            {"message": "Profile picture updated successfully."}, 
+            status=status.HTTP_200_OK
+        )
+        
+class FullNameView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = FullNameSerializer
+
+    def get_object(self):
+        """
+        يسترجع كائن المستخدم الحالي.
+        """
+        return self.request.user
+
+class FirstNameView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = FirstNameSerializer
+
+    def get_object(self):
+        """
+        يعيد كائن المستخدم الحالي.
+        """
+        return self.request.user
+
+# -----------------------
+# API Root
+# -----------------------
+from rest_framework.decorators import api_view,permission_classes
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.AllowAny])
+def api_root(request, format=None):
+    return Response({"welcome to petcare api"})
