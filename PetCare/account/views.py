@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework import generics, status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
-from django.conf import settings # لتجنب استيراد DEFAULT_FROM_EMAIL مباشرة من PetCare
+from django.conf import settings
 import smtplib
 
 from .models import User, OTP
@@ -65,6 +65,10 @@ class SignupRequestView(APIView):
 
         # توليد وحفظ OTP
         otp = str(random.randint(100000, 999999))
+        
+        # 🟢 طباعة OTP في الكونسول للتسجيل 🟢
+        print(f"DEBUG OTP (Signup) for {email}: {otp}")
+        
         hashed_otp = bcrypt.hashpw(otp.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
         OTP.objects.filter(user=user, otp_type="signup").delete()
@@ -185,6 +189,10 @@ class ForgetPasswordView(APIView):
 
         # إنشاء وحفظ الـ OTP (ضمن المعاملة الذرية)
         otp = str(random.randint(100000, 999999))
+        
+        # 🟢 طباعة OTP في الكونسول لنسيان كلمة المرور 🟢
+        print(f"DEBUG OTP (Forget Password) for {email}: {otp}")
+        
         hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         OTP.objects.filter(user=user, otp_type='reset_password').delete()
         OTP.objects.create(user=user, code=hashed_otp, otp_type='reset_password')
@@ -308,6 +316,10 @@ class EmailChangeRequestView(APIView):
         
         # توليد وحفظ OTP (ضمن المعاملة الذرية)
         otp = str(random.randint(100000, 999999))
+        
+        # 🟢 طباعة OTP في الكونسول لتغيير البريد الإلكتروني 🟢
+        print(f"DEBUG OTP (Email Change) for {new_email}: {otp}")
+        
         hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         
         OTP.objects.filter(user=request.user, otp_type="email_change").delete()
