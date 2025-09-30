@@ -72,6 +72,7 @@ class SignupRequestView(APIView):
 
         # 🛑 إرسال الإيميل (معالج أخطاء أكثر تفصيلاً) 🛑
         try:
+            """
             send_mail(
                 subject="Account Verification OTP",
                 message=f"Your OTP for account verification is: {otp}",
@@ -79,6 +80,10 @@ class SignupRequestView(APIView):
                 recipient_list=[email],
                 fail_silently=False
             )
+            """
+            print("Skipping email sending...")
+            return Response({"status": "ok, email skipped"})
+
         except smtplib.SMTPAuthenticationError:
             # هذا الخطأ يحدث عادة عندما تكون كلمة المرور غير صحيحة
             print("CRITICAL SMTP AUTH ERROR: Check EMAIL_HOST_PASSWORD (App Password).")
