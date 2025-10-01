@@ -13,32 +13,23 @@ class VaccinationSerializer(serializers.ModelSerializer):
         fields = ['vacc_name', 'vacc_date', 'vacc_certificate']
 
 # ----------------------------------------------------
-# 🟢 0. مُسلسل المالك (OwnerSerializer) - الإضافة الجديدة
+# 🟢 ملاحظة: تم حذف OwnerSerializer بالكامل 
 # ----------------------------------------------------
-class OwnerSerializer(serializers.ModelSerializer):
-    """
-    مُسلسل لعرض بيانات المالك، بما في ذلك الاسم الكامل المحسوب (@property).
-    """
-    # يتم استدعاء خاصية @property 'full_name' من نموذج User
-    full_name = serializers.CharField(read_only=True) 
-
-    class Meta:
-        model = User
-        fields = [
-            'id', 
-            'full_name',        # 🟢 الحقل المطلوب
-            'location',         # لإظهار الموقع
-            'profile_picture',
-        ]
-        read_only_fields = fields
 
 
 # ----------------------------------------------------
 # 1. مُسلسل لعرض الحيوانات المتاحة للمتبني (التعديل الرئيسي)
 # ----------------------------------------------------
 class PetAdoptionDetailSerializer(serializers.ModelSerializer):
-    # 🟢 التعديل: استخدام OwnerSerializer الجديد لعرض تفاصيل المالك
-    owner = OwnerSerializer(read_only=True)
+    """
+    مُسلسل لعرض تفاصيل الحيوان الأليف للتبني.
+    تم تسطيح بيانات المالك لتتوافق مع البنية المطلوبة (owner_name, owner_location).
+    """
+    # 🟢 التعديل 1: جلب الاسم الكامل مباشرة وتغيير اسم الحقل إلى owner_name
+    owner_name = serializers.CharField(source='owner.full_name', read_only=True)
+    
+    # 🟢 التعديل 2: جلب الموقع مباشرة
+    owner_location = serializers.CharField(source='owner.location', read_only=True)
     
     vaccinations = VaccinationSerializer(many=True, read_only=True)
     owner_message = serializers.CharField(source='adoption_post.owner_message', read_only=True)
@@ -49,14 +40,14 @@ class PetAdoptionDetailSerializer(serializers.ModelSerializer):
         model = Pet
         fields = [
             'id', 'pet_name', 'pet_type', 'pet_color', 'pet_gender', 
-            'age', 'pet_photo', 'owner_message', 
-            'owner',            # 🟢 تم استبدال owner_location بعلاقة owner
+            'age', 'pet_photo', 
+            'owner_name',       # 🟢 الحقل الجديد
+            'owner_location',   # 🟢 الحقل الجديد
+            'owner_message', 
             'vaccinations'
         ]
         
-    # يمكن إضافة دالة get_age هنا إذا لم تكن موجودة في النموذج
-    # def get_age(self, obj):
-    #     منطق حساب العمر...
+    # (يمكنك إضافة دالة get_age هنا إذا لم تكن موجودة في النموذج)
 
 
 # ----------------------------------------------------
