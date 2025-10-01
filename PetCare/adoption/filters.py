@@ -5,21 +5,27 @@ from adoption.models import AdoptionPost
 
 
 class AdoptionFilter(django_filters.FilterSet):
-    # مثال على فلترة بناءً على نوع الحيوان الأليف
+    # الفلترة بناءً على نوع الحيوان الأليف
+    # lookup_expr='iexact' يعني تطابق دقيق غير حساس لحالة الأحرف (مثل "dog" تطابق "Dog")
     pet_type = django_filters.CharFilter(
         field_name='pet_type', 
         lookup_expr='iexact'
     )
     
-    # مثال على فلترة بناءً على الجنس
+    # الفلترة بناءً على الجنس
     pet_gender = django_filters.CharFilter(
         field_name='pet_gender', 
         lookup_expr='iexact'
     )
     
-    # يمكنك إضافة المزيد من الفلاتر هنا...
+    # 🟢 الإضافة المطلوبة: الفلترة بناءً على الموقع
+    # lookup_expr='icontains' يسمح بالبحث عن جزء من الكلمة (مثل "Gold" تطابق "Golden")
+    location = django_filters.CharFilter(
+        field_name='location', 
+        lookup_expr='icontains'
+    )
 
     class Meta:
-        # الفلتر يعتمد على نموذج Pet لأن AdoptionListView يرجع كائنات Pet
+        # الفلتر يعتمد على نموذج Pet
         model = Pet 
-        fields = ['pet_type', 'pet_gender']
+        fields = ['pet_type', 'pet_gender', 'location'] # 🟢 تم إضافة 'location'

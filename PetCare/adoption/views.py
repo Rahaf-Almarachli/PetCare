@@ -24,10 +24,10 @@ class AdoptionListView(generics.ListAPIView):
     """
     permission_classes = [permissions.IsAuthenticated]
     
-    # الممارسة القياسية: تعيين الكلاسات مباشرة في الكلاس
+    # تحديد السيريالايزر وخلفية الفلترة وكلاس الفلتر
     serializer_class = PetAdoptionDetailSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_class = AdoptionFilter
+    filterset_class = AdoptionFilter # 🟢 متوافق مع فلاتر النوع والجنس واللون والموقع (owner__location)
 
     def get_queryset(self):
         # الاستعلام يبدأ من Pet (لأن السيريالايزر يتوقع Pet)
@@ -35,10 +35,16 @@ class AdoptionListView(generics.ListAPIView):
             # التصفية بناءً على وجود العلاقة العكسية (adoption_post)
             adoption_post__isnull=False 
         ).select_related(
-            'owner' # تحسين الأداء: جلب المالك
+            # 🟢 تحسين الأداء: جلب المالك (owner) في نفس الاستعلام
+            # هذا ضروري ومفيد جداً لفلترة 'owner__location'
+            'owner' 
         ).prefetch_related(
-            'vaccinations' # 🛑 تم التعديل: استخدام 'vaccinations' بدلاً من 'vaccination_set'
+            # جلب اللقاحات في استعلام منفصل (للـ Serializer)
+            'vaccinations' 
         ).order_by('-adoption_post__created_at')
+        
+        # عند تطبيق الفلاتر (مثل location=Riyadh)، سيستخدم Django REST Framework
+        # كلاس AdoptionFilter لتعديل هذا الـ Queryset قبل عرضه.
         
         return queryset
 
