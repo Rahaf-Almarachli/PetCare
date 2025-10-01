@@ -21,11 +21,17 @@ class AdoptionFilter(django_filters.FilterSet):
     # 🟢 الإضافة المطلوبة: الفلترة بناءً على الموقع
     # lookup_expr='icontains' يسمح بالبحث عن جزء من الكلمة (مثل "Gold" تطابق "Golden")
     location = django_filters.CharFilter(
-        field_name='location', 
+        field_name='pets__location', 
         lookup_expr='icontains'
+    )
+
+    pet_color = django_filters.ChoiceFilter(
+        field_name='pet_color', 
+        choices=Pet.COLOR_CHOICES, # جلب الخيارات مباشرة من النموذج
+        # lookup_expr='exact' هو الافتراضي هنا
     )
 
     class Meta:
         # الفلتر يعتمد على نموذج Pet
         model = Pet 
-        fields = ['pet_type', 'pet_gender', 'location'] # 🟢 تم إضافة 'location'
+        fields = ['pet_type', 'pet_gender', 'pet_color' , 'location'] # 🟢 تم إضافة 'location'
