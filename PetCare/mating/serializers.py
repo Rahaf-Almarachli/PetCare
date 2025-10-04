@@ -5,8 +5,6 @@ from account.models import User
 from .models import MatingPost
 from django.db import transaction
 
-# 🛑 تم حذف OwnerSerializer لأنه تم تسطيح الحقول مباشرة في PetMatingDetailSerializer 🛑
-
 # ----------------------------------------------------
 # 1. مُسلسل لعرض الحيوانات المتاحة للتزاوج (MatingListView)
 # ----------------------------------------------------
@@ -31,7 +29,6 @@ class PetMatingDetailSerializer(serializers.ModelSerializer):
             'owner_name',       
             'owner_location',   
             'owner_message', 
-            # لا حاجة لـ vaccinations إذا كانت غير مطلوبة هنا
         ]
 
 # ----------------------------------------------------
@@ -49,14 +46,17 @@ class MatingPostExistingPetSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         
         try:
+            # 1. جلب الحيوان والتأكد من أنه ملك للمستخدم
             pet = Pet.objects.get(id=pet_id, owner=user)
         except Pet.DoesNotExist:
             raise serializers.ValidationError({"pet_id": "Pet not found or does not belong to the user."})
 
-        # التحقق من أن الحيوان ليس معروضاً للتزاوج بالفعل
-        if hasattr(pet, 'mating_post'):
+        # 🟢 2. التحقق المُصحح: التأكد من عدم وجود منشور تزاوج حالي لهذا الحيوان 🟢
+        # نستخدم استعلام قاعدة بيانات للتأكد، بدلاً من التحقق من وجود خاصية على الكائن
+        if MatingPost.objects.filter(pet=pet).exists():
             raise serializers.ValidationError({"pet_id": "This pet is already posted for mating."})
             
+        # 3. إنشاء منشور التزاوج الجديد
         return MatingPost.objects.create(pet=pet, **validated_data)
 
 
@@ -64,6 +64,9 @@ class MatingPostExistingPetSerializer(serializers.ModelSerializer):
 # 3. مُسلسل لإنشاء حيوان جديد وعرضه للتزاوج (الحالة 2: Add a new pet)
 # ----------------------------------------------------
 class NewPetMatingSerializer(serializers.Serializer):
+    """
+    يستخدم لإنشاء سجل Pet جديد ثم ربطه بمنشور MatingPost جديد.
+    """
     # حقول نموذج Pet
     pet_name = serializers.CharField(max_length=100)
     pet_type = serializers.CharField(max_length=50)
