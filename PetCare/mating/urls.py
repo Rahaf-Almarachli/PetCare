@@ -1,10 +1,14 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import MatingPostViewSet
+from django.urls import path
+from .views import MatingListView, CreateMatingPostView
 
-router = DefaultRouter()
-router.register(r'adoption-post', MatingPostViewSet, basename='mating-post')
+# يجب إضافة هذا المسار (urls) إلى ملف project/urls.py باستخدام:
+# path('api/mating/', include('mating.urls')),
 
 urlpatterns = [
-    path('', include(router.urls)),
+    # GET: عرض قائمة الحيوانات المتاحة للتزاوج (MatingListView)
+    # يمكن استخدام الفلترة هنا: .../api/mating/?pet_gender=Male
+    path('', MatingListView.as_view(), name='mating-list'),
+    
+    # POST: إنشاء منشور تزاوج جديد (CreateMatingPostView)
+    path('create/', CreateMatingPostView.as_view(), name='create-mating-post'),
 ]
