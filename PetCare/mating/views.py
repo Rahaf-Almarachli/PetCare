@@ -1,8 +1,8 @@
-from rest_framework import generics, permissions
+from rest_framework import permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from django_filters.rest_framework import DjangoFilterBackend
+from django.shortcuts import get_object_or_404 
 
 # الاستيرادات اللازمة
 from pets.models import Pet
@@ -12,35 +12,78 @@ from .serializers import (
     MatingPostExistingPetSerializer, 
     NewPetMatingSerializer
 )
-from .filters import MatingFilter # 🟢 هذا الفلتر تم تعديله ليتضمن فقط pet_gender 🟢
 # ---------------------------------------------------------------------
 
-class MatingListView(generics.ListAPIView):
+class MatingListView(APIView):
     """
-    GET: عرض قائمة الحيوانات المعروضة للتزاوج.
-    تدعم الفلترة فقط بناءً على الجنس (pet_gender).
+    GET: 
+    1. يعرض القائمة الكاملة (إذا لم يتم إرسال target_pet_id).
+    2. يقوم بالفلترة التلقائية للجنس المعاكس ونوع الحيوان (إذا تم إرسال target_pet_id).
     """
     permission_classes = [permissions.IsAuthenticated]
     
-    serializer_class = PetMatingDetailSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_class = MatingFilter # يستخدم الآن الفلتر المبسط
-
-    def get_queryset(self):
-        # الاستعلام يبدأ من Pet ويتأكد من وجود منشور تزاوج مرتبط
+    def get(self, request, *args, **kwargs):
+        # 1. جلب ID الحيوان الأليف من Query Parameters
+        target_pet_id = request.query_params.get('target_pet_id')
+        
+        # 2. الاستعلام الأساسي: جلب جميع الحيوانات المعروضة للتزاوج
         queryset = Pet.objects.filter(
-            # التصفية بناءً على وجود العلاقة العكسية (mating_post)
             mating_post__isnull=False 
         ).select_related(
-            'owner' # تحسين الأداء: جلب المالك لدعم البيانات في Serializer
+            'owner'
         ).order_by('-mating_post__created_at')
+
+        selected_pet_name = None
         
-        return queryset
+        if target_pet_id:
+            try:
+                # جلب الحيوان الأليف الذي اختاره المستخدم (يجب أن يكون مالكاً له)
+                target_pet = get_object_or_404(Pet, id=target_pet_id, owner=request.user)
+                
+                # تحديد الجنس المعاكس للفلترة
+                if target_pet.pet_gender == 'Male':
+                    required_gender = 'Female'
+                elif target_pet.pet_gender == 'Female':
+                    required_gender = 'Male'
+                else:
+                    # في حال كان الجنس غير محدد أو قيمة غير متوقعة
+                    required_gender = None 
+                
+                # 🟢 تطبيق الفلترة التلقائية: الجنس المعاكس ونوع الحيوان 🟢
+                if required_gender:
+                    queryset = queryset.filter(
+                        pet_gender=required_gender, 
+                        pet_type=target_pet.pet_type
+                    )
+                
+                # إعداد اسم الحيوان الأليف المُختار لإرجاعه في الاستجابة
+                selected_pet_name = target_pet.pet_name
+                
+            except Pet.DoesNotExist:
+                return Response(
+                    {"error": "The selected pet was not found or does not belong to the user."}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except Exception as e:
+                return Response(
+                    {"error": f"An unexpected error occurred: {e}"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # 3. تسلسل البيانات وإرجاع الـ Response بالصيغة المطلوبة
+        serializer = PetMatingDetailSerializer(queryset, many=True, context={'request': request})
+        
+        response_data = {
+            "target_pet_name": selected_pet_name, # اسم الحيوان الأليف المُختار (سيكون None في حالة عدم إرسال ID)
+            "results": serializer.data             # قائمة الحيوانات المفلترة/الكاملة
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class CreateMatingPostView(APIView):
     """
-    POST: إنشاء منشور تزاوج جديد. (لم يتغير المنطق)
+    POST: إنشاء منشور تزاوج جديد. (لا تغيير هنا)
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -49,14 +92,14 @@ class CreateMatingPostView(APIView):
         
         # تحديد أي سيريالايزر سيتم استخدامه بناءً على البيانات المرسلة
         if 'pet_id' in data:
-            # حالة: اختيار حيوان موجود
+            # حالة: اختيار حيوان موجود 
             serializer_class = MatingPostExistingPetSerializer
-        elif all(k in data for k in ['pet_name', 'pet_type', 'owner_message']):
+        elif all(k in data for k in ['pet_name', 'pet_type', 'owner_message', 'pet_birthday', 'pet_gender']):
             # حالة: إنشاء حيوان جديد ومنشور تزاوج
             serializer_class = NewPetMatingSerializer
         else:
             return Response(
-                {"error": "Invalid data format. Requires 'pet_id' or a new pet's details ('pet_name', 'pet_type', 'owner_message')."}, 
+                {"error": "Invalid data format. Missing required fields for new pet or pet_id for existing pet."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
