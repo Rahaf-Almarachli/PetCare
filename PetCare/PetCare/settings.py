@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'rest_framework_nested',
     'mood',
     'alerts',
+    'requests',
 ]
 
 REST_FRAMEWORK = {

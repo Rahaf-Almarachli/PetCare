@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404 
+from django.db.models import Prefetch
 
 # الاستيرادات اللازمة
 from pets.models import Pet
@@ -12,6 +13,8 @@ from .serializers import (
     MatingPostExistingPetSerializer, 
     NewPetMatingSerializer
 )
+# افتراض استيراد نموذج اللقاحات بشكل صحيح
+from vaccination.models import Vaccination 
 # ---------------------------------------------------------------------
 
 class MatingListView(APIView):
@@ -25,18 +28,21 @@ class MatingListView(APIView):
         target_pet_id = request.query_params.get('target_pet_id')
         
         # 1. الاستعلام الأساسي: جلب الحيوانات المعروضة للتزاوج مع تحسين الأداء
+        # ملاحظة: تم تعديل prefetch_related لاستخدام Prefetch لربط MatingPost بكفاءة
         queryset = Pet.objects.filter(
             mating_post__isnull=False 
         ).select_related(
             'owner'
         ).prefetch_related(
-            'vaccinations' # 🟢 جلب بيانات اللقاحات بكفاءة 🟢
+            Prefetch('mating_post', queryset=MatingPost.objects.all()), # جلب الـ MatingPost المرتبط
+            'vaccinations' # جلب بيانات اللقاحات بكفاءة
         ).order_by('-mating_post__created_at')
 
         selected_pet_name = None
         
         if target_pet_id:
             try:
+                # التحقق من ملكية target_pet للمستخدم الحالي قبل الفلترة
                 target_pet = get_object_or_404(Pet, id=target_pet_id, owner=request.user)
                 
                 # منطق تحديد الجنس المعاكس
@@ -72,7 +78,7 @@ class MatingListView(APIView):
         
         response_data = {
             "target_pet_name": selected_pet_name, 
-            "results": serializer.data             
+            "results": serializer.data 
         }
         
         return Response(response_data, status=status.HTTP_200_OK)
@@ -101,7 +107,11 @@ class CreateMatingPostView(APIView):
         
         if serializer.is_valid():
             mating_post = serializer.save()
-            response_serializer = PetMatingDetailSerializer(mating_post.pet)
+            
+            # 🟢 التعديل الرئيسي هنا: إعادة تسلسل الحيوان المرتبط بالمنشور 🟢
+            # هذا يضمن أن 'owner_message' (الذي يأتي عبر mating_post.owner_message) يعود في الـ response.
+            response_serializer = PetMatingDetailSerializer(mating_post.pet) 
+            
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

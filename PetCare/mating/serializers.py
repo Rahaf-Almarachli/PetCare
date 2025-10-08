@@ -1,9 +1,9 @@
 from rest_framework import serializers
 from pets.models import Pet
 from account.models import User 
-from mating.models import MatingPost # يجب استيراد MatingPost هنا للتحقق
+from mating.models import MatingPost 
 from django.db import transaction
-# 🟢 استيراد نموذج اللقاحات (افتراضياً من تطبيق 'vaccination') 🟢
+# يجب التأكد من وجود vaccination.models.Vaccination
 from vaccination.models import Vaccination 
 
 # ----------------------------------------------------
@@ -22,14 +22,15 @@ class VaccinationSerializer(serializers.ModelSerializer):
 # ----------------------------------------------------
 class PetMatingDetailSerializer(serializers.ModelSerializer):
     """
-    مُسلسل لعرض تفاصيل الحيوان المعروض للتزاوج. يتضمن اللقاحات.
+    مُسلسل لعرض تفاصيل الحيوان المعروض للتزاوج. يتضمن اللقاحات ورسالة المالك.
     """
     owner_name = serializers.CharField(source='owner.full_name', read_only=True)
     owner_location = serializers.CharField(source='owner.location', read_only=True)
+    # هذا الحقل هو المسؤول عن جلب الرسالة من المنشور المرتبط بالحيوان
     owner_message = serializers.CharField(source='mating_post.owner_message', read_only=True)
     age = serializers.ReadOnlyField() 
     
-    # 🟢 إضافة حقل اللقاحات 🟢
+    # إضافة حقل اللقاحات 
     vaccinations = VaccinationSerializer(many=True, read_only=True) 
 
     class Meta:
@@ -37,10 +38,10 @@ class PetMatingDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'pet_name', 'pet_type', 'pet_color', 'pet_gender', 
             'age', 'pet_photo', 
-            'owner_name',       
-            'owner_location',   
-            'owner_message', 
-            'vaccinations', # 🟢 تم إضافة اللقاحات هنا 🟢
+            'owner_name',      
+            'owner_location',  
+            'owner_message', # 🟢 يعود في الـ Response
+            'vaccinations', 
         ]
 
 # ----------------------------------------------------
@@ -62,7 +63,7 @@ class MatingPostExistingPetSerializer(serializers.ModelSerializer):
         except Pet.DoesNotExist:
             raise serializers.ValidationError({"pet_id": "Pet not found or does not belong to the user."})
 
-        # 🟢 التحقق المُصحح: التأكد من عدم وجود منشور تزاوج حالي لهذا الحيوان 🟢
+        # التحقق من عدم وجود منشور تزاوج حالي لهذا الحيوان
         if MatingPost.objects.filter(pet=pet).exists():
             raise serializers.ValidationError({"pet_id": "This pet is already posted for mating."})
             
