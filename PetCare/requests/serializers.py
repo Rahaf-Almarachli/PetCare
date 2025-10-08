@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import InteractionRequest
-from pets.models import Pet 
+from pet.models import Pet 
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
@@ -12,9 +12,7 @@ User = get_user_model()
 class SenderDetailSerializer(serializers.ModelSerializer):
     """
     Serializes sender details for the Request Details page.
-    Assumes 'full_name', 'location', and 'phone_number' are accessible on the User model.
     """
-    # Assuming these fields are available on the User model
     location = serializers.CharField(read_only=True)
     phone_number = serializers.CharField(read_only=True)
     
@@ -24,20 +22,16 @@ class SenderDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'full_name', 'location', 'phone_number']
 
 # ----------------------------------------------------
-# 2. Interaction Request Serializer (CREATE/LIST)
+# 2. Request Create Serializer (للمسار POST /create/)
 # ----------------------------------------------------
-class InteractionRequestSerializer(serializers.ModelSerializer):
+class RequestCreateSerializer(serializers.ModelSerializer):
     """
-    Serializer used for POST (Create) and GET (Inbox List).
-    **Attached_file now expects a valid URL string.**
+    Serializer مخصص لإنشاء طلب جديد (POST).
+    يحتوي فقط على الحقول المطلوبة من المرسل (User A).
     """
     pet_id = serializers.IntegerField(write_only=True)
     
-    pet_name = serializers.CharField(source='pet.pet_name', read_only=True)
-    sender_name = serializers.CharField(source='sender.full_name', read_only=True)
-    sender_location = serializers.CharField(source='sender.location', read_only=True) 
-
-    # 🟢 التعديل الرئيسي: تعريف attached_file كـ URLField 🟢
+    # 🟢 attached_file كـ URLField
     attached_file = serializers.URLField(
         required=False, 
         allow_null=True, 
@@ -48,13 +42,8 @@ class InteractionRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = InteractionRequest
         fields = [
-            'id', 'pet_id', 'request_type', 'message', 'owner_response_message', 
-            'attached_file', 'status', 'created_at', 'pet_name', 'sender_name', 
-            'sender_location'
+            'pet_id', 'request_type', 'message', 'attached_file'
         ]
-        # owner_response_message is read-only when listing or creating
-        read_only_fields = ['status', 'created_at', 'owner_response_message'] 
-
 
     def validate_pet_id(self, value):
         user = self.context['request'].user
@@ -74,6 +63,7 @@ class InteractionRequestSerializer(serializers.ModelSerializer):
         pet = Pet.objects.get(id=pet_id)
         user = self.context['request'].user
         
+        # تحقق من عدم وجود طلب معلق مسبقاً
         if InteractionRequest.objects.filter(sender=user, pet=pet, status='Pending').exists():
              raise serializers.ValidationError({"detail": "You already have a pending request for this pet."})
 
@@ -86,17 +76,41 @@ class InteractionRequestSerializer(serializers.ModelSerializer):
         return request
 
 # ----------------------------------------------------
-# 3. Request Detail Serializer (RETRIEVE/UPDATE)
+# 3. Request List/Detail Serializer (للعرض والـ Inbox)
 # ----------------------------------------------------
-class RequestDetailSerializer(InteractionRequestSerializer):
+class RequestDetailSerializer(serializers.ModelSerializer):
     """
-    Serializer used for the detailed GET request and also for the PATCH response.
+    Serializer يُستخدم لعرض تفاصيل الطلب في Inbox ولإرجاع تفاصيل الرد.
     """
     sender = SenderDetailSerializer(read_only=True)
 
-    class Meta(InteractionRequestSerializer.Meta):
+    # حقول العرض الإضافية
+    pet_name = serializers.CharField(source='pet.pet_name', read_only=True)
+    sender_name = serializers.CharField(source='sender.full_name', read_only=True)
+    sender_location = serializers.CharField(source='sender.location', read_only=True)
+    
+    # attached_file يبقى URLField للقراءة
+    attached_file = serializers.URLField(read_only=True)
+
+
+    class Meta:
+        model = InteractionRequest
         fields = [
-            'id', 'sender', 'request_type', 'message', 'owner_response_message', 
-            'attached_file', 'status', 'created_at', 'pet_name', 'pet_id'
+            'id', 'request_type', 'message', 'owner_response_message', 
+            'attached_file', 'status', 'created_at', 'pet_name',
+            'sender',  # كائن المرسل الكامل (يظهر فقط في Detail)
+            'sender_name', 'sender_location' # حقول العرض السريع (يظهر في List/Inbox)
         ]
-        read_only_fields = InteractionRequestSerializer.Meta.read_only_fields
+        read_only_fields = ['id', 'request_type', 'message', 'owner_response_message', 
+                            'attached_file', 'status', 'created_at', 'pet_name', 
+                            'sender', 'sender_name', 'sender_location']
+
+# ----------------------------------------------------
+# 4. التعديل الضروري في views.py (لم يتم إرساله، ولكن للتوضيح)
+# ----------------------------------------------------
+# يجب عليك تعديل CreateInteractionRequestView لاستخدام Serializer الجديد:
+#
+# class CreateInteractionRequestView(generics.CreateAPIView):
+#     serializer_class = RequestCreateSerializer # 👈 التعديل هنا
+#     permission_classes = [permissions.IsAuthenticated]
+#     # ...
