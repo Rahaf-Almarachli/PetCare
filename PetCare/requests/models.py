@@ -50,8 +50,7 @@ class InteractionRequest(models.Model):
     message = models.TextField(verbose_name="Request Message")
     
     # FileField for the attached file (image, document, etc.)
-    attached_file = models.FileField(
-        upload_to='request_attachments/', 
+    attached_file = models.CharField( 
         blank=True, 
         null=True
     )
