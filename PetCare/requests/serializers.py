@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import InteractionRequest
-from pet.models import Pet 
+from pets.models import Pet 
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
