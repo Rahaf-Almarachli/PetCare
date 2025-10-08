@@ -1,87 +1,120 @@
-from django.shortcuts import render
-from rest_framework import generics, permissions, status
-from rest_framework.parsers import MultiPartParser, FormParser 
+from rest_framework import generics, permissions
+from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Q
-from .serializers import InteractionRequestSerializer, RequestDetailSerializer
+from rest_framework import status
+from django.db.models import Prefetch, Q
+from django.shortcuts import get_object_or_404
+
+# الاستيرادات اللازمة
 from .models import InteractionRequest
+from .serializers import RequestCreateSerializer, RequestDetailSerializer, SenderDetailSerializer
+# 👆 تم تغيير InteractionRequestSerializer إلى RequestCreateSerializer 👆
 
-class CreateInteractionRequestView(generics.CreateAPIView):
-    """ 
-    POST /api/requests/create/
-    Creates a new Mating/Adoption request, allowing file attachments.
-    """
-    queryset = InteractionRequest.objects.all()
-    serializer_class = InteractionRequestSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    parser_classes = (MultiPartParser, FormParser) 
-
-
+# ----------------------------------------------------
+# 1. View لعرض قائمة الطلبات (Inbox)
+# ----------------------------------------------------
 class RequestInboxListView(generics.ListAPIView):
-    """ 
-    GET /api/requests/inbox/
-    Lists all incoming requests where the current user is the pet owner (receiver).
     """
-    serializer_class = InteractionRequestSerializer
+    GET: عرض جميع الطلبات الواردة للمستخدم الحالي (بصفته المالك/المستقبل).
+    """
+    serializer_class = RequestDetailSerializer # يستخدم لعرض تفاصيل الطلب السريع
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Filter requests where the current user is the intended receiver
-        return InteractionRequest.objects.filter(receiver=self.request.user).order_by('-created_at')
+        user = self.request.user
+        # جلب الطلبات التي يكون فيها المستخدم الحالي هو المستقبل (Receiver)
+        queryset = InteractionRequest.objects.filter(
+            receiver=user
+        ).select_related(
+            'sender', 'pet'
+        ).order_by('-created_at')
+        
+        return queryset
 
-
+# ----------------------------------------------------
+# 2. View لعرض تفاصيل الطلب (Detail)
+# ----------------------------------------------------
 class RequestDetailView(generics.RetrieveAPIView):
-    """ 
-    GET /api/requests/<id>/
-    Retrieves the full details of a single request.
     """
-    queryset = InteractionRequest.objects.all()
+    GET: عرض تفاصيل طلب معين.
+    يسمح للمرسل أو المستقبل (المالك) برؤية الطلب.
+    """
     serializer_class = RequestDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'id'
 
     def get_queryset(self):
-        # Only allow the sender OR the receiver (owner) to view the details
         user = self.request.user
-        return InteractionRequest.objects.filter(Q(sender=user) | Q(receiver=user))
+        # يسمح للمستخدم برؤية الطلبات التي هو مرسلها أو مستقبلها
+        return InteractionRequest.objects.filter(
+            Q(sender=user) | Q(receiver=user)
+        ).select_related('sender', 'pet')
 
-
-class UpdateRequestStatusView(generics.UpdateAPIView):
-    """ 
-    PATCH /api/requests/<id>/status/
-    Used to Accept or Reject a request by updating its status field.
+# ----------------------------------------------------
+# 3. View لإنشاء طلب جديد
+# ----------------------------------------------------
+class CreateInteractionRequestView(generics.CreateAPIView):
     """
-    queryset = InteractionRequest.objects.all()
+    POST: إنشاء طلب تفاعل جديد (تبني/تزاوج).
+    """
+    # 🟢 نستخدم Serializer المخصص للإنشاء 🟢
+    serializer_class = RequestCreateSerializer 
     permission_classes = [permissions.IsAuthenticated]
-    http_method_names = ['patch']
-    lookup_field = 'id'
 
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
+    def perform_create(self, serializer):
+        # يتم تخزين المنطق المعقد للـ create في الـ Serializer
+        instance = serializer.save()
         
-        # 1. Authorization: Only the receiver (pet owner) can change the status
-        if instance.receiver != request.user:
+        # لضمان أن الاستجابة (Response) تعرض جميع التفاصيل المنسقة
+        # نستخدم RequestDetailSerializer لإرجاع البيانات بعد الحفظ.
+        response_serializer = RequestDetailSerializer(instance)
+        return response_serializer.data
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # يتم استخدام perform_create للحفظ والحصول على كائن الاستجابة المنسق
+        response_data = self.perform_create(serializer)
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+# ----------------------------------------------------
+# 4. View لتحديث حالة الطلب وإضافة الرد (فقط للمالك)
+# ----------------------------------------------------
+class RequestUpdateStatusView(APIView):
+    """
+    PATCH: تحديث حالة الطلب (قبول/رفض) وإضافة رسالة الرد من المالك.
+    مخصص للمستقبل (المالك) فقط.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, id):
+        request_obj = get_object_or_404(InteractionRequest, id=id)
+        user = request.user
+
+        # التحقق من أن المستخدم الحالي هو المالك/المستقبل للطلب
+        if request_obj.receiver != user:
             return Response(
-                {"detail": "You are not authorized to change the status of this request."}, 
+                {"detail": "You do not have permission to modify this request."},
                 status=status.HTTP_403_FORBIDDEN
             )
-            
-        new_status = request.data.get('status')
-        valid_statuses = ['Accepted', 'Rejected']
 
-        # 2. Validation
-        if new_status not in valid_statuses:
+        # التحقق من أن الحقول المطلوبة موجودة
+        if 'status' not in request.data:
             return Response(
-                {"detail": "Invalid status value. Must be 'Accepted' or 'Rejected'."},
+                {"detail": "Missing 'status' field in the request."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 3. Update Status
-        instance.status = new_status
-        instance.save()
-        
-        # --- NOTIFICATION HOOK: Notify the sender that the status changed ---
-        
-        # Return the updated details
-        serializer = RequestDetailSerializer(instance)
-        return Response(serializer.data)
+        new_status = request.data['status']
+        owner_response_message = request.data.get('owner_response_message', '')
+
+        # تحديث الحقول مباشرة
+        request_obj.status = new_status
+        request_obj.owner_response_message = owner_response_message
+        request_obj.save(update_fields=['status', 'owner_response_message'])
+
+        # إرجاع تفاصيل الطلب المحدثة باستخدام RequestDetailSerializer
+        serializer = RequestDetailSerializer(request_obj)
+        return Response(serializer.data, status=status.HTTP_200_OK)
