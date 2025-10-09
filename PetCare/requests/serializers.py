@@ -8,13 +8,13 @@ from django.db import transaction
 User = get_user_model()
 
 # ----------------------------------------------------
-# 1. Sender Detail Serializer (يُستخدم داخل Serializers أخرى)
+# 1. Sender Detail Serializer (تفاصيل المرسل الكاملة)
 # ----------------------------------------------------
 class SenderDetailSerializer(serializers.ModelSerializer):
     """
     Serializes sender details (Full Name, Location, Phone) for Detail views.
     """
-    # تم إزالة source المكرر لحل مشكلة AssertionError
+    # تم إزالة source المكرر
     location = serializers.CharField(read_only=True)
     phone_number = serializers.CharField(read_only=True)
     
@@ -24,7 +24,7 @@ class SenderDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'full_name', 'location', 'phone_number']
 
 # ----------------------------------------------------
-# 2. Request Create Serializer (للمسار POST /create/)
+# 2. Request Create Serializer (لإنشاء الطلب)
 # ----------------------------------------------------
 class RequestCreateSerializer(serializers.ModelSerializer):
     """
@@ -76,31 +76,24 @@ class RequestCreateSerializer(serializers.ModelSerializer):
         return request
 
 # ----------------------------------------------------
-# 3. Request Detail Serializer (للعرض الموجز/Inbox)
+# 3. Request Detail Serializer (للعرض الموجز/Inbox List)
 # ----------------------------------------------------
 class RequestDetailSerializer(serializers.ModelSerializer):
     """
     Serializer يُستخدم لعرض التفاصيل الموجزة (Inbox List).
     """
-    # حقل مخصص لاستخراج الاسم الأول للمرسل
     sender_first_name = serializers.SerializerMethodField()
-    
-    # حقل العنوان
     sender_location = serializers.CharField(source='sender.location', read_only=True)
-    
-    # حقل العبارة المدمجة (Requesting to mate/adopt {{pet_name}})
     request_summary_text = serializers.SerializerMethodField()
     
 
     def get_sender_first_name(self, obj):
-        """يستخرج الاسم الأول من حقل full_name للمرسل."""
         full_name = obj.sender.full_name
         if full_name:
             return full_name.split(' ')[0]
         return ""
     
     def get_request_summary_text(self, obj):
-        """يُنشئ العبارة المطلوبة بناءً على نوع الطلب واسم الحيوان الأليف."""
         pet_name = obj.pet.pet_name
         if obj.request_type == 'Mate':
             return f"Requesting to mate {pet_name}"
@@ -126,25 +119,20 @@ class RequestDetailSerializer(serializers.ModelSerializer):
 class RequestFullDetailSerializer(serializers.ModelSerializer):
     """
     Serializer يُستخدم لعرض التفاصيل الكاملة للطلب (Request Details Screen).
+    يعرض فقط: تفاصيل المرسل (الاسم، الموقع، الهاتف)، الرسالة، والملف المرفق.
     """
     # نستخدم SenderDetailSerializer لعرض الاسم الكامل، الموقع، ورقم الهاتف
     sender = SenderDetailSerializer(read_only=True)
     
-    # حقول إضافية للعرض
-    pet_name = serializers.CharField(source='pet.pet_name', read_only=True)
+    # الملف المرفق
     attached_file = serializers.URLField(read_only=True) 
-    
+
     class Meta:
         model = InteractionRequest
+        # 🟢 الحقول الخمسة المطلوبة فقط 🟢
         fields = [
-            'id', 
-            'sender',                 # التفاصيل الكاملة للمرسل
-            'request_type', 
-            'message',                # رسالة الطلب
-            'attached_file',          # الملف المرفق
-            'owner_response_message', # رسالة الرد من المالك
-            'status', 
-            'created_at', 
-            'pet_name',
+            'sender',          # يحتوي على: full_name, location, phone_number
+            'message',         # رسالة الطلب
+            'attached_file',   # الملف المرفق
         ]
         read_only_fields = fields
