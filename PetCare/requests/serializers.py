@@ -13,8 +13,10 @@ class SenderDetailSerializer(serializers.ModelSerializer):
     """
     Serializes sender details for the Request Details page.
     """
-    location = serializers.CharField(source='location', read_only=True)
-    phone_number = serializers.CharField(source='phone_number', read_only=True)
+    # 🟢 تم إزالة source='location' لأنه مكرر 🟢
+    location = serializers.CharField(read_only=True)
+    # 🟢 تم إزالة source='phone_number' لأنه مكرر 🟢
+    phone_number = serializers.CharField(read_only=True)
     
     class Meta:
         model = User
@@ -83,6 +85,7 @@ class RequestDetailSerializer(serializers.ModelSerializer):
     sender = SenderDetailSerializer(read_only=True)
 
     # حقول العرض الإضافية
+    # 💡 هذه الحقول تستخدم source لتتبع العلاقة (pet.pet_name)، لذا هي صحيحة.
     pet_name = serializers.CharField(source='pet.pet_name', read_only=True)
     sender_name = serializers.CharField(source='sender.full_name', read_only=True)
     sender_location = serializers.CharField(source='sender.location', read_only=True)
