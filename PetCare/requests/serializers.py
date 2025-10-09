@@ -13,9 +13,7 @@ class SenderDetailSerializer(serializers.ModelSerializer):
     """
     Serializes sender details for the Request Details page.
     """
-    # 🟢 تم إزالة source='location' لأنه مكرر 🟢
     location = serializers.CharField(read_only=True)
-    # 🟢 تم إزالة source='phone_number' لأنه مكرر 🟢
     phone_number = serializers.CharField(read_only=True)
     
     class Meta:
@@ -81,27 +79,44 @@ class RequestCreateSerializer(serializers.ModelSerializer):
 class RequestDetailSerializer(serializers.ModelSerializer):
     """
     Serializer يُستخدم لعرض تفاصيل الطلب (للمرسل والمستقبل).
+    تم تخصيصه لعرض ملخص الـ Inbox: الاسم الأول، الموقع، وعبارة الطلب.
     """
-    sender = SenderDetailSerializer(read_only=True)
-
-    # حقول العرض الإضافية
-    # 💡 هذه الحقول تستخدم source لتتبع العلاقة (pet.pet_name)، لذا هي صحيحة.
-    pet_name = serializers.CharField(source='pet.pet_name', read_only=True)
-    sender_name = serializers.CharField(source='sender.full_name', read_only=True)
+    # 🟢 1. حقل الاسم الأول للمرسل 🟢
+    sender_first_name = serializers.SerializerMethodField()
+    
+    # 🟢 2. حقل العنوان 🟢
     sender_location = serializers.CharField(source='sender.location', read_only=True)
     
-    # attached_file كـ URLField للقراءة
-    attached_file = serializers.URLField(read_only=True)
+    # 🟢 3. حقل العبارة المدمجة (Requesting to mate/adopt {{pet_name}}) 🟢
+    request_summary_text = serializers.SerializerMethodField()
+    
+
+    def get_sender_first_name(self, obj):
+        """يستخرج الاسم الأول من حقل full_name للمرسل."""
+        full_name = obj.sender.full_name
+        if full_name:
+            # يفترض أن الاسم الأول هو الكلمة الأولى قبل أي مسافة
+            return full_name.split(' ')[0]
+        return ""
+    
+    def get_request_summary_text(self, obj):
+        """يُنشئ العبارة المطلوبة بناءً على نوع الطلب واسم الحيوان الأليف."""
+        pet_name = obj.pet.pet_name
+        if obj.request_type == 'Mate':
+            return f"Requesting to mate {pet_name}"
+        elif obj.request_type == 'Adoption':
+            return f"Requesting to adopt {pet_name}"
+        return ""
 
 
     class Meta:
         model = InteractionRequest
+        # 🟢 4. قائمة الحقول المعدّلة لـ Inbox List 🟢
         fields = [
-            'id', 'request_type', 'message', 'owner_response_message', 
-            'attached_file', 'status', 'created_at', 'pet_name',
-            'sender',  
-            'sender_name', 'sender_location' 
+            'id', 
+            'sender_first_name',     # الاسم الأول
+            'sender_location',       # العنوان
+            'request_summary_text',  # العبارة المخصصة
+            'request_type',          # نوع الطلب (Adoption/Mate)
         ]
-        read_only_fields = ['id', 'request_type', 'message', 'owner_response_message', 
-                            'attached_file', 'status', 'created_at', 'pet_name', 
-                            'sender', 'sender_name', 'sender_location']
+        read_only_fields = fields # كل هذه الحقول للقراءة فقط
