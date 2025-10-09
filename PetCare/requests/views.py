@@ -4,13 +4,15 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+
+# 🟢 تم استيراد InteractionRequest لحل مشكلة NameError 🟢
 from .models import InteractionRequest
-# ...
-# بقية الاستيرادات الأخرى
-from .serializers import RequestCreateSerializer, RequestDetailSerializer 
-# ...
-# 🟢 الاستيراد الصحيح للـ Serializers الجديدة 🟢
-from .serializers import RequestCreateSerializer, RequestDetailSerializer
+# 🟢 تم استيراد جميع Serializers 🟢
+from .serializers import (
+    RequestCreateSerializer, 
+    RequestDetailSerializer, 
+    RequestFullDetailSerializer 
+)
 
 # ----------------------------------------------------
 # 1. View لعرض قائمة الطلبات (Inbox)
@@ -19,7 +21,7 @@ class RequestInboxListView(generics.ListAPIView):
     """
     GET: عرض جميع الطلبات الواردة للمستخدم الحالي (بصفته المالك/المستقبل).
     """
-    serializer_class = RequestDetailSerializer 
+    serializer_class = RequestDetailSerializer # يستخدم الـ Serializer الموجز
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -39,7 +41,8 @@ class RequestDetailView(generics.RetrieveAPIView):
     """
     GET: عرض تفاصيل طلب معين.
     """
-    serializer_class = RequestDetailSerializer
+    # 🟢 يستخدم الـ Serializer التفصيلي 🟢
+    serializer_class = RequestFullDetailSerializer 
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'id'
 
@@ -56,14 +59,13 @@ class CreateInteractionRequestView(generics.CreateAPIView):
     """
     POST: إنشاء طلب تفاعل جديد.
     """
-    # 🟢 استخدام Serializer الإنشاء 🟢
     serializer_class = RequestCreateSerializer 
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
         instance = serializer.save()
-        # إرجاع البيانات باستخدام Detail Serializer للعرض الكامل
-        response_serializer = RequestDetailSerializer(instance)
+        # إرجاع البيانات باستخدام Full Detail Serializer للعرض الكامل بعد الإنشاء
+        response_serializer = RequestFullDetailSerializer(instance)
         return response_serializer.data
 
     def create(self, request, *args, **kwargs):
@@ -80,7 +82,6 @@ class CreateInteractionRequestView(generics.CreateAPIView):
 class RequestUpdateStatusView(APIView):
     """
     PATCH: تحديث حالة الطلب (قبول/رفض) وإضافة رسالة الرد من المالك.
-    مخصص للمستقبل (المالك) فقط.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -88,14 +89,12 @@ class RequestUpdateStatusView(APIView):
         request_obj = get_object_or_404(InteractionRequest, id=id)
         user = request.user
 
-        # 🟢 منطق التحقق من الأذونات (403 Forbidden) 🟢
         if request_obj.receiver != user:
             return Response(
                 {"detail": "You do not have permission to modify this request."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # التحقق من أن الحقول المطلوبة موجودة
         if 'status' not in request.data:
             return Response(
                 {"detail": "Missing 'status' field in the request."},
@@ -103,15 +102,13 @@ class RequestUpdateStatusView(APIView):
             )
 
         new_status = request.data['status']
-        # إذا لم يتم إرسال owner_response_message، استخدم الرسالة الحالية
         owner_response_message = request.data.get('owner_response_message', request_obj.owner_response_message)
 
-        # تحديث الحقول
         request_obj.status = new_status
         request_obj.owner_response_message = owner_response_message
         
-        # 🟢 يتم الآن الحفظ بنجاح لأن الحقل موجود في الـ Model 🟢
         request_obj.save(update_fields=['status', 'owner_response_message'])
 
-        serializer = RequestDetailSerializer(request_obj)
+        # نستخدم الـ Serializer التفصيلي لإرجاع الحالة المحدثة
+        serializer = RequestFullDetailSerializer(request_obj) 
         return Response(serializer.data, status=status.HTTP_200_OK)

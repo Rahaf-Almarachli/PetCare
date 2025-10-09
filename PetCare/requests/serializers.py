@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import InteractionRequest
+# تأكد من استيراد Pet بشكل صحيح، بناءً على مكان الـ Model
 from pets.models import Pet 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -7,12 +8,13 @@ from django.db import transaction
 User = get_user_model()
 
 # ----------------------------------------------------
-# 1. Sender Detail Serializer
+# 1. Sender Detail Serializer (يُستخدم داخل Serializers أخرى)
 # ----------------------------------------------------
 class SenderDetailSerializer(serializers.ModelSerializer):
     """
-    Serializes sender details for the Request Details page.
+    Serializes sender details (Full Name, Location, Phone) for Detail views.
     """
+    # تم إزالة source المكرر لحل مشكلة AssertionError
     location = serializers.CharField(read_only=True)
     phone_number = serializers.CharField(read_only=True)
     
@@ -74,20 +76,19 @@ class RequestCreateSerializer(serializers.ModelSerializer):
         return request
 
 # ----------------------------------------------------
-# 3. Request Detail Serializer (للعرض والتفاصيل والـ Inbox)
+# 3. Request Detail Serializer (للعرض الموجز/Inbox)
 # ----------------------------------------------------
 class RequestDetailSerializer(serializers.ModelSerializer):
     """
-    Serializer يُستخدم لعرض تفاصيل الطلب (للمرسل والمستقبل).
-    تم تخصيصه لعرض ملخص الـ Inbox: الاسم الأول، الموقع، وعبارة الطلب.
+    Serializer يُستخدم لعرض التفاصيل الموجزة (Inbox List).
     """
-    # 🟢 1. حقل الاسم الأول للمرسل 🟢
+    # حقل مخصص لاستخراج الاسم الأول للمرسل
     sender_first_name = serializers.SerializerMethodField()
     
-    # 🟢 2. حقل العنوان 🟢
+    # حقل العنوان
     sender_location = serializers.CharField(source='sender.location', read_only=True)
     
-    # 🟢 3. حقل العبارة المدمجة (Requesting to mate/adopt {{pet_name}}) 🟢
+    # حقل العبارة المدمجة (Requesting to mate/adopt {{pet_name}})
     request_summary_text = serializers.SerializerMethodField()
     
 
@@ -95,7 +96,6 @@ class RequestDetailSerializer(serializers.ModelSerializer):
         """يستخرج الاسم الأول من حقل full_name للمرسل."""
         full_name = obj.sender.full_name
         if full_name:
-            # يفترض أن الاسم الأول هو الكلمة الأولى قبل أي مسافة
             return full_name.split(' ')[0]
         return ""
     
@@ -111,12 +111,40 @@ class RequestDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InteractionRequest
-        # 🟢 4. قائمة الحقول المعدّلة لـ Inbox List 🟢
         fields = [
             'id', 
-            'sender_first_name',     # الاسم الأول
-            'sender_location',       # العنوان
-            'request_summary_text',  # العبارة المخصصة
-            'request_type',          # نوع الطلب (Adoption/Mate)
+            'sender_first_name',     
+            'sender_location',       
+            'request_summary_text',  
+            'request_type',          
         ]
-        read_only_fields = fields # كل هذه الحقول للقراءة فقط
+        read_only_fields = fields
+
+# ----------------------------------------------------
+# 4. Request Full Detail Serializer (للعرض التفصيلي)
+# ----------------------------------------------------
+class RequestFullDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer يُستخدم لعرض التفاصيل الكاملة للطلب (Request Details Screen).
+    """
+    # نستخدم SenderDetailSerializer لعرض الاسم الكامل، الموقع، ورقم الهاتف
+    sender = SenderDetailSerializer(read_only=True)
+    
+    # حقول إضافية للعرض
+    pet_name = serializers.CharField(source='pet.pet_name', read_only=True)
+    attached_file = serializers.URLField(read_only=True) 
+    
+    class Meta:
+        model = InteractionRequest
+        fields = [
+            'id', 
+            'sender',                 # التفاصيل الكاملة للمرسل
+            'request_type', 
+            'message',                # رسالة الطلب
+            'attached_file',          # الملف المرفق
+            'owner_response_message', # رسالة الرد من المالك
+            'status', 
+            'created_at', 
+            'pet_name',
+        ]
+        read_only_fields = fields
