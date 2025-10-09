@@ -49,8 +49,9 @@ class InteractionRequest(models.Model):
     )
     message = models.TextField(verbose_name="Request Message")
     
-    # FileField for the attached file (image, document, etc.)
+    # حقل لتخزين رابط URL للملف المرفق
     attached_file = models.CharField( 
+        max_length=500, # تحديد طول مناسب للرابط
         blank=True, 
         null=True
     )
@@ -59,6 +60,14 @@ class InteractionRequest(models.Model):
         max_length=10, 
         choices=STATUS_CHOICES, 
         default='Pending'
+    )
+    
+    # 🟢 الحقل المفقود الذي يسبب ValueError 🟢
+    owner_response_message = models.TextField(
+        null=True, 
+        blank=True, 
+        verbose_name="Owner Response Message",
+        help_text="الرسالة الاختيارية من المالك عند قبول أو رفض الطلب."
     )
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -71,5 +80,6 @@ class InteractionRequest(models.Model):
     def __str__(self):
         return f"Request for {self.pet.pet_name} ({self.request_type}) by {self.sender.username}"
 
-# NOTE: You will need to run 'python manage.py makemigrations' and 'python manage.py migrate'
-# after adding this model.
+# ⚠️ ملاحظة مهمة: يجب تنفيذ الأمر: 
+# python manage.py makemigrations requests
+# python manage.py migrate

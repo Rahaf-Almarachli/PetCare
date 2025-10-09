@@ -13,8 +13,8 @@ class SenderDetailSerializer(serializers.ModelSerializer):
     """
     Serializes sender details for the Request Details page.
     """
-    location = serializers.CharField(read_only=True)
-    phone_number = serializers.CharField(read_only=True)
+    location = serializers.CharField(source='location', read_only=True)
+    phone_number = serializers.CharField(source='phone_number', read_only=True)
     
     class Meta:
         model = User
@@ -26,12 +26,11 @@ class SenderDetailSerializer(serializers.ModelSerializer):
 # ----------------------------------------------------
 class RequestCreateSerializer(serializers.ModelSerializer):
     """
-    Serializer مخصص لإنشاء طلب جديد (POST).
-    يحتوي فقط على الحقول المطلوبة من المرسل (User A).
+    Serializer مخصص لإنشاء طلب جديد.
     """
     pet_id = serializers.IntegerField(write_only=True)
     
-    # 🟢 attached_file كـ URLField
+    # attached_file كـ URLField
     attached_file = serializers.URLField(
         required=False, 
         allow_null=True, 
@@ -63,7 +62,6 @@ class RequestCreateSerializer(serializers.ModelSerializer):
         pet = Pet.objects.get(id=pet_id)
         user = self.context['request'].user
         
-        # تحقق من عدم وجود طلب معلق مسبقاً
         if InteractionRequest.objects.filter(sender=user, pet=pet, status='Pending').exists():
              raise serializers.ValidationError({"detail": "You already have a pending request for this pet."})
 
@@ -76,11 +74,11 @@ class RequestCreateSerializer(serializers.ModelSerializer):
         return request
 
 # ----------------------------------------------------
-# 3. Request List/Detail Serializer (للعرض والـ Inbox)
+# 3. Request Detail Serializer (للعرض والتفاصيل والـ Inbox)
 # ----------------------------------------------------
 class RequestDetailSerializer(serializers.ModelSerializer):
     """
-    Serializer يُستخدم لعرض تفاصيل الطلب في Inbox ولإرجاع تفاصيل الرد.
+    Serializer يُستخدم لعرض تفاصيل الطلب (للمرسل والمستقبل).
     """
     sender = SenderDetailSerializer(read_only=True)
 
@@ -89,7 +87,7 @@ class RequestDetailSerializer(serializers.ModelSerializer):
     sender_name = serializers.CharField(source='sender.full_name', read_only=True)
     sender_location = serializers.CharField(source='sender.location', read_only=True)
     
-    # attached_file يبقى URLField للقراءة
+    # attached_file كـ URLField للقراءة
     attached_file = serializers.URLField(read_only=True)
 
 
@@ -98,19 +96,9 @@ class RequestDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'request_type', 'message', 'owner_response_message', 
             'attached_file', 'status', 'created_at', 'pet_name',
-            'sender',  # كائن المرسل الكامل (يظهر فقط في Detail)
-            'sender_name', 'sender_location' # حقول العرض السريع (يظهر في List/Inbox)
+            'sender',  
+            'sender_name', 'sender_location' 
         ]
         read_only_fields = ['id', 'request_type', 'message', 'owner_response_message', 
                             'attached_file', 'status', 'created_at', 'pet_name', 
                             'sender', 'sender_name', 'sender_location']
-
-# ----------------------------------------------------
-# 4. التعديل الضروري في views.py (لم يتم إرساله، ولكن للتوضيح)
-# ----------------------------------------------------
-# يجب عليك تعديل CreateInteractionRequestView لاستخدام Serializer الجديد:
-#
-# class CreateInteractionRequestView(generics.CreateAPIView):
-#     serializer_class = RequestCreateSerializer # 👈 التعديل هنا
-#     permission_classes = [permissions.IsAuthenticated]
-#     # ...
