@@ -4,7 +4,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
-
+from .models import InteractionRequest
+# ...
+# بقية الاستيرادات الأخرى
+from .serializers import RequestCreateSerializer, RequestDetailSerializer 
+# ...
 # 🟢 الاستيراد الصحيح للـ Serializers الجديدة 🟢
 from .serializers import RequestCreateSerializer, RequestDetailSerializer
 
