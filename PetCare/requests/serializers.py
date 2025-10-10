@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import InteractionRequest
-# تأكد من استيراد Pet بشكل صحيح، بناءً على مكان الـ Model
 from pets.models import Pet 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -128,7 +127,7 @@ class RequestFullDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InteractionRequest
-        # تم تضمين ID الطلب لتسهيل عمل أزرار القبول/الرفض
+        # الحقول المطلوبة للعرض التفصيلي
         fields = [
             'id',              
             'sender',          

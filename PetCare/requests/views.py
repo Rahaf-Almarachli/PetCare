@@ -4,11 +4,10 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from django.db import transaction # 🟢 استيراد الـ transaction 🟢
+from django.db import transaction 
 
-# استيراد النموذج والـ Serializers
+# استيراد النموذج والـ Serializers ونموذج Pet
 from .models import InteractionRequest
-# يجب استيراد نموذج الحيوان الأليف (Pet) للوصول إليه
 from pets.models import Pet 
 from .serializers import (
     RequestCreateSerializer, 
@@ -20,7 +19,9 @@ from .serializers import (
 # 1. View لعرض قائمة الطلبات (Inbox)
 # ----------------------------------------------------
 class RequestInboxListView(generics.ListAPIView):
-    # ... (الكود كما هو)
+    """
+    GET: عرض جميع الطلبات الواردة للمستخدم الحالي (بصفته المالك/المستقبل).
+    """
     serializer_class = RequestDetailSerializer 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -38,7 +39,9 @@ class RequestInboxListView(generics.ListAPIView):
 # 2. View لعرض تفاصيل الطلب (Detail)
 # ----------------------------------------------------
 class RequestDetailView(generics.RetrieveAPIView):
-    # ... (الكود كما هو)
+    """
+    GET: عرض تفاصيل طلب معين.
+    """
     serializer_class = RequestFullDetailSerializer 
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'id'
@@ -53,7 +56,9 @@ class RequestDetailView(generics.RetrieveAPIView):
 # 3. View لإنشاء طلب جديد
 # ----------------------------------------------------
 class CreateInteractionRequestView(generics.CreateAPIView):
-    # ... (الكود كما هو)
+    """
+    POST: إنشاء طلب تفاعل جديد.
+    """
     serializer_class = RequestCreateSerializer 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -71,70 +76,77 @@ class CreateInteractionRequestView(generics.CreateAPIView):
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 # ----------------------------------------------------
-# 4. View لتحديث حالة الطلب وإضافة الرد (فقط للمالك) - المعدل
+# 4. View لتحديث حالة الطلب وإضافة الرد (المعدَّل لتنفيذ منطق الحذف)
 # ----------------------------------------------------
 class RequestUpdateStatusView(APIView):
     """
-    PATCH: تحديث حالة الطلب (قبول/رفض).
-    1. عند القبول، يتم حذف الحيوان من العرض.
-    2. يتم حذف الطلب نفسه بعد المعالجة.
+    PATCH: تحديث حالة الطلب (قبول/رفض) وتنظيف الـ Inbox وقوائم العرض.
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    @transaction.atomic # 🟢 لضمان تنفيذ العمليتين (التحديث والحذف) أو عدم تنفيذهما معاً 🟢
+    @transaction.atomic # لضمان سلامة قاعدة البيانات
     def patch(self, request, id):
         request_obj = get_object_or_404(InteractionRequest, id=id)
         user = request.user
 
-        # التحقق من الصلاحيات
+        # 1. التحقق من الصلاحيات
         if request_obj.receiver != user:
             return Response(
                 {"detail": "You do not have permission to modify this request."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        if 'status' not in request.data:
-            return Response(
-                {"detail": "Missing 'status' field in the request."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        new_status = request.data['status']
+        new_status = request.data.get('status')
+        owner_response_message = request.data.get('owner_response_message', request_obj.owner_response_message)
         pet = request_obj.pet
         
-        # 1. تحديث حالة الحيوان (فقط عند القبول)
-        if new_status == 'Accepted':
-            # 💡 يتم افتراض أن النموذج Pet لديه حقل يتحكم في عرضه (مثل is_available)
-            # إذا كان الحقل في نموذج Pet اسمه is_available, فيمكنك تعديله:
-            # pet.is_available = False 
-            # pet.save()
-            
-            # 💡 إذا كنت تريد حذفه فعليًا من قاعدة البيانات (وهو خيار قوي لا يفضل عادةً):
-            # pet.delete()
+        if not new_status:
+            return Response({"detail": "Missing 'status' field in the request."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # 💡 التعديل الأفضل: ربط الحيوان بالمستخدم الجديد (لعمليات التبني)
-            if request_obj.request_type == 'Adoption':
-                pet.owner = request_obj.sender # نقل ملكية الحيوان إلى المرسل
-                # 💡 ربما تحتاج لتعديل حقل يدل على عدم عرضه (مثلاً 'is_listed_for_adoption')
-                # pet.is_listed_for_adoption = False 
-                pet.save()
-            
-            # إذا كان الطلب 'Mate'، لا يتم حذف الحيوان، لكن قد ترغب في تحديث حالته.
-            pass # نتركها حالياً كما هي للتزاوج
-
-        # 2. تحديث رسالة الرد وحفظ الطلب
+        # 2. تحديث الطلب أولاً (لتسجيل الرد)
         request_obj.status = new_status
-        request_obj.owner_response_message = request.data.get('owner_response_message', request_obj.owner_response_message)
-        request_obj.save()
+        request_obj.owner_response_message = owner_response_message
+        request_obj.save(update_fields=['status', 'owner_response_message'])
 
-        # 3. حذف الطلب من قائمة الطلبات (بعد قبوله/رفضه)
-        request_id = request_obj.id
-        request_obj.delete()
 
-        # 4. إرجاع رد ناجح (مع الإشارة إلى أن الطلب حُذف)
-        # بما أن الكائن حُذف، لا يمكننا تمريره إلى Serializer.
-        # لذا نرسل رسالة نجاح بسيطة.
-        return Response(
-            {"detail": f"Request {request_id} successfully processed and deleted."},
-            status=status.HTTP_200_OK
-        )
+        if new_status == 'Accepted':
+            
+            # أ. منطق التعامل مع حالة الحيوان حسب نوع الطلب
+            if request_obj.request_type == 'Adoption':
+                # نقل ملكية الحيوان إلى المتبني (المرسل)
+                pet.owner = request_obj.sender 
+                pet.save()
+                action_message = "ownership transferred and all requests deleted."
+                
+            elif request_obj.request_type == 'Mate':
+                # في حالة التزاوج، يبقى المالك كما هو.
+                # يفترض أن تغيير حالته يجعله غير مرئي مؤقتًا لقوائم التزاوج الأخرى
+                # (يمكنك إضافة pet.is_available_for_mating = False هنا)
+                pass
+                action_message = "Mating request approved and all requests deleted."
+            
+            # ب. حذف جميع الطلبات الخاصة بهذا الحيوان من Inbox المالك
+            InteractionRequest.objects.filter(pet=pet).delete()
+            
+            # ج. الرد بعد العملية
+            return Response(
+                {"detail": f"Request accepted. Pet {pet.id} {action_message}"},
+                status=status.HTTP_200_OK
+            )
+
+        elif new_status == 'Rejected':
+            
+            # د. حذف الطلب المرفوض فقط من Inbox المالك
+            request_id = request_obj.id
+            request_obj.delete()
+
+            # هـ. الرد بعد العملية
+            return Response(
+                {"detail": f"Request {request_id} rejected and deleted from inbox."},
+                status=status.HTTP_200_OK
+            )
+        
+        else:
+            # إذا كانت الحالة غير مقبولة أو مرفوضة (مثلاً Pending)
+            serializer = RequestFullDetailSerializer(request_obj) 
+            return Response(serializer.data, status=status.HTTP_200_OK)
