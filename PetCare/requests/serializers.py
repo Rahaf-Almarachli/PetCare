@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import InteractionRequest
+# تأكد من استيراد Pet بشكل صحيح، بناءً على مكان الـ Model
 from pets.models import Pet 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -30,6 +31,7 @@ class RequestCreateSerializer(serializers.ModelSerializer):
     """
     pet_id = serializers.IntegerField(write_only=True)
     
+    # attached_file كـ URLField
     attached_file = serializers.URLField(
         required=False, 
         allow_null=True, 
@@ -116,24 +118,21 @@ class RequestDetailSerializer(serializers.ModelSerializer):
 class RequestFullDetailSerializer(serializers.ModelSerializer):
     """
     Serializer يُستخدم لعرض التفاصيل الكاملة للطلب (Request Details Screen).
-    يعرض فقط: تفاصيل المرسل (الاسم، الموقع، الهاتف)، الرسالة، والملف المرفق.
+    يعرض: تفاصيل المرسل (الاسم الكامل، الموقع، رقم الهاتف)، الرسالة، والملف المرفق.
     """
-    # نستخدم SenderDetailSerializer لعرض الاسم الكامل، الموقع، ورقم الهاتف (ككائن فرعي)
+    # كائن sender يحتوي على الاسم الكامل، الموقع، ورقم الهاتف
     sender = SenderDetailSerializer(read_only=True)
     
-    # 🟢 إضافة رقم الهاتف كحقل مباشر للتأكيد (Source: sender.phone_number) 🟢
-    sender_phone_number = serializers.CharField(source='sender.phone_number', read_only=True)
-
     # الملف المرفق
     attached_file = serializers.URLField(read_only=True) 
 
     class Meta:
         model = InteractionRequest
-        # 🟢 إضافة sender_phone_number إلى قائمة الحقول المطلوبة 🟢
+        # تم تضمين ID الطلب لتسهيل عمل أزرار القبول/الرفض
         fields = [
-            'sender',                 # يحتوي على: full_name, location, phone_number
-            'sender_phone_number',    # رقم الهاتف مباشرة (للتأكيد إذا لم يكن يعجبك الكائن المتداخل)
-            'message',                # رسالة الطلب
-            'attached_file',          # الملف المرفق
+            'id',              
+            'sender',          
+            'message',         
+            'attached_file',   
         ]
         read_only_fields = fields

@@ -40,7 +40,6 @@ class RequestDetailView(generics.RetrieveAPIView):
     """
     GET: عرض تفاصيل طلب معين.
     """
-    # 🟢 يستخدم الـ Serializer التفصيلي 🟢
     serializer_class = RequestFullDetailSerializer 
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'id'
