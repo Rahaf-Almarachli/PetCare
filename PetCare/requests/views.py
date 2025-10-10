@@ -76,11 +76,12 @@ class CreateInteractionRequestView(generics.CreateAPIView):
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 # ----------------------------------------------------
-# 4. View لتحديث حالة الطلب وإضافة الرد (المعدَّل لتنفيذ منطق الحذف)
+# 4. View لتحديث حالة الطلب (المعدَّل)
 # ----------------------------------------------------
 class RequestUpdateStatusView(APIView):
     """
     PATCH: تحديث حالة الطلب (قبول/رفض) وتنظيف الـ Inbox وقوائم العرض.
+    يعتمد فقط على حقل 'status'.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -97,16 +98,16 @@ class RequestUpdateStatusView(APIView):
             )
 
         new_status = request.data.get('status')
-        owner_response_message = request.data.get('owner_response_message', request_obj.owner_response_message)
         pet = request_obj.pet
         
-        if not new_status:
-            return Response({"detail": "Missing 'status' field in the request."}, status=status.HTTP_400_BAD_REQUEST)
+        # التحقق من الحالة
+        if not new_status or new_status not in ['Accepted', 'Rejected']:
+            return Response({"detail": "Invalid or missing 'status' field (must be Accepted or Rejected)."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. تحديث الطلب أولاً (لتسجيل الرد)
+        # 2. تحديث حالة الطلب
         request_obj.status = new_status
-        request_obj.owner_response_message = owner_response_message
-        request_obj.save(update_fields=['status', 'owner_response_message'])
+        # ❌ تم إزالة owner_response_message من هنا
+        request_obj.save(update_fields=['status']) 
 
 
         if new_status == 'Accepted':
@@ -120,8 +121,7 @@ class RequestUpdateStatusView(APIView):
                 
             elif request_obj.request_type == 'Mate':
                 # في حالة التزاوج، يبقى المالك كما هو.
-                # يفترض أن تغيير حالته يجعله غير مرئي مؤقتًا لقوائم التزاوج الأخرى
-                # (يمكنك إضافة pet.is_available_for_mating = False هنا)
+                # لا يتم تغيير الملكية.
                 pass
                 action_message = "Mating request approved and all requests deleted."
             
@@ -147,6 +147,6 @@ class RequestUpdateStatusView(APIView):
             )
         
         else:
-            # إذا كانت الحالة غير مقبولة أو مرفوضة (مثلاً Pending)
+            # يجب أن لا يصل الكود إلى هنا
             serializer = RequestFullDetailSerializer(request_obj) 
             return Response(serializer.data, status=status.HTTP_200_OK)

@@ -14,6 +14,7 @@ class SenderDetailSerializer(serializers.ModelSerializer):
     Serializes sender details (Full Name, Location, Phone) for Detail views.
     """
     location = serializers.CharField(read_only=True)
+    # 🟢 هذا الحقل يضمن إظهار رقم الهاتف في التفاصيل 🟢
     phone_number = serializers.CharField(read_only=True)
     
     class Meta:
@@ -30,7 +31,6 @@ class RequestCreateSerializer(serializers.ModelSerializer):
     """
     pet_id = serializers.IntegerField(write_only=True)
     
-    # attached_file كـ URLField
     attached_file = serializers.URLField(
         required=False, 
         allow_null=True, 
@@ -117,17 +117,17 @@ class RequestDetailSerializer(serializers.ModelSerializer):
 class RequestFullDetailSerializer(serializers.ModelSerializer):
     """
     Serializer يُستخدم لعرض التفاصيل الكاملة للطلب (Request Details Screen).
-    يعرض: تفاصيل المرسل (الاسم الكامل، الموقع، رقم الهاتف)، الرسالة، والملف المرفق.
     """
     # كائن sender يحتوي على الاسم الكامل، الموقع، ورقم الهاتف
     sender = SenderDetailSerializer(read_only=True)
     
     # الملف المرفق
     attached_file = serializers.URLField(read_only=True) 
+    
+    # ❌ تم حذف owner_response_message من هنا أيضًا
 
     class Meta:
         model = InteractionRequest
-        # الحقول المطلوبة للعرض التفصيلي
         fields = [
             'id',              
             'sender',          
