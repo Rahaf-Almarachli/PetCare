@@ -32,15 +32,12 @@ AUTH_USER_MODEL = 'account.User'
 # Email settings
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
-#EMAIL_PORT = 587
-#EMAIL_USE_TLS = True
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER",'rahaftest0@gmail.com')
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD",'tyyu utct ggrx dipo')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 EMAIL_TIMEOUT = 5
-EMAIL_PORT = 465
-EMAIL_USE_SSL = True
-EMAIL_USE_TLS = False # تأكد أن هذا False أو قم بإزالته إذا استخدمت SSL
 
 # Application definition
 INSTALLED_APPS = [

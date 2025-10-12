@@ -6,9 +6,11 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.db import transaction 
 
-# استيراد النموذج والـ Serializers ونموذج Pet
+# استيراد النماذج
 from .models import InteractionRequest
 from pets.models import Pet 
+# 🟢 التعديل: استيراد نموذج AdoptionPost
+from adoption.models import AdoptionPost 
 from .serializers import (
     RequestCreateSerializer, 
     RequestDetailSerializer, 
@@ -76,12 +78,11 @@ class CreateInteractionRequestView(generics.CreateAPIView):
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 # ----------------------------------------------------
-# 4. View لتحديث حالة الطلب (المعدَّل)
+# 4. View لتحديث حالة الطلب (المعدَّل)
 # ----------------------------------------------------
 class RequestUpdateStatusView(APIView):
     """
-    PATCH: تحديث حالة الطلب (قبول/رفض) وتنظيف الـ Inbox وقوائم العرض.
-    يعتمد فقط على حقل 'status'.
+    PATCH: تحديث حالة الطلب (قبول/رفض) وضمان إزالة الحيوان من قائمة التبني.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -106,7 +107,6 @@ class RequestUpdateStatusView(APIView):
 
         # 2. تحديث حالة الطلب
         request_obj.status = new_status
-        # ❌ تم إزالة owner_response_message من هنا
         request_obj.save(update_fields=['status']) 
 
 
@@ -114,18 +114,25 @@ class RequestUpdateStatusView(APIView):
             
             # أ. منطق التعامل مع حالة الحيوان حسب نوع الطلب
             if request_obj.request_type == 'Adoption':
-                # نقل ملكية الحيوان إلى المتبني (المرسل)
+                
+                # 1. نقل ملكية الحيوان إلى المتبني (المرسل)
                 pet.owner = request_obj.sender 
                 pet.save()
-                action_message = "ownership transferred and all requests deleted."
+                
+                # 🟢 التعديل الرئيسي: حذف منشور التبني 🟢
+                try:
+                    AdoptionPost.objects.get(pet=pet).delete()
+                    action_message = "ownership transferred, pet removed from adoption list, and all requests deleted."
+                except AdoptionPost.DoesNotExist:
+                    # هذه الحالة تحدث إذا تم قبول طلب لحيوان لم يعد لديه منشور تبني.
+                    action_message = "ownership transferred. AdoptionPost was already removed or didn't exist."
                 
             elif request_obj.request_type == 'Mate':
-                # في حالة التزاوج، يبقى المالك كما هو.
-                # لا يتم تغيير الملكية.
+                # في حالة التزاوج، يبقى المالك كما هو ولا يتأثر منشور التبني.
                 pass
                 action_message = "Mating request approved and all requests deleted."
             
-            # ب. حذف جميع الطلبات الخاصة بهذا الحيوان من Inbox المالك
+            # ب. حذف جميع طلبات التفاعل لهذا الحيوان
             InteractionRequest.objects.filter(pet=pet).delete()
             
             # ج. الرد بعد العملية
