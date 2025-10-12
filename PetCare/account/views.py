@@ -7,7 +7,10 @@ from rest_framework import generics, status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
 from django.conf import settings
-import smtplib # ترك الاستيراد لا يضر، لكن لم نعد نستخدمه
+import smtplib 
+import logging 
+from socket import timeout as socket_timeout 
+from smtplib import SMTPException, SMTPAuthenticationError # إضافة استيراد لأخطاء SMTP محددة
 
 from .models import User, OTP
 from .serializers import (
@@ -27,6 +30,10 @@ from .serializers import (
 )
 import bcrypt
 
+# تهيئة سجل الأخطاء
+logger = logging.getLogger(__name__)
+
+# استخدام إعدادات البريد الإلكتروني من settings.py
 DEFAULT_FROM_EMAIL = settings.DEFAULT_FROM_EMAIL
 
 # -----------------------
@@ -66,29 +73,62 @@ class SignupRequestView(APIView):
         # توليد وحفظ OTP
         otp = str(random.randint(100000, 999999))
         
-        # 🟢 الحل: طباعة OTP في الكونسول وإلغاء محاولة الإرسال 🟢
-        # هذا يسمح بإكمال التسجيل بالرغم من فشل SMTP
-        print(f"DEBUG OTP (Signup) for {email}: {otp}")
-        
+        # تشفير وحفظ OTP
         hashed_otp = bcrypt.hashpw(otp.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
         OTP.objects.filter(user=user, otp_type="signup").delete()
         OTP.objects.create(user=user, code=hashed_otp, otp_type="signup")
 
-        # 🛑 تم إلغاء كتلة try/except لإرسال الإيميل بالكامل 🛑
+        # 🟢 محاولة إرسال البريد الإلكتروني 🟢
+        email_sent = False
+        email_subject = 'PetCare OTP Verification Code'
+        email_message = f"Your OTP for PetCare registration is: {otp}"
+        
+        try:
+            send_mail(
+                subject=email_subject,
+                message=email_message,
+                from_email=DEFAULT_FROM_EMAIL,
+                recipient_list=[email],
+                fail_silently=False,
+            )
+            email_sent = True
+            logger.info(f"Successfully sent OTP to {email}")
+            
+        except (SMTPException, socket_timeout) as e:
+            # التعامل مع أخطاء SMTP والمهلة
+            logger.error(f"Email Error (Signup) to {email}: {e}")
+            print(f"DEBUG: OTP failed to send via email. Code: {otp}")
+            
+        except Exception as e:
+            # التعامل مع أي خطأ عام آخر
+            logger.error(f"General Error (Signup) to {email}: {e}")
+            print(f"DEBUG: OTP failed to send via email. Code: {otp}")
+
         
         # رسالة الرد تعتمد على الحالة
         if user_created:
-            return Response(
-                {"message": "User created. OTP generated (Check server logs)."}, 
-                status=status.HTTP_201_CREATED
-            )
+            if email_sent:
+                 return Response(
+                    {"message": "User created. OTP sent to your email."}, 
+                    status=status.HTTP_201_CREATED
+                )
+            else:
+                 # إذا لم يُرسل الإيميل، نعطي رسالة واضحة ونبقى على حالة 201
+                 return Response(
+                    {"message": "User created, but OTP email failed to send. Please check server logs for code."}, 
+                    status=status.HTTP_201_CREATED
+                )
         else:
-            return Response(
-                {"message": "OTP re-sent (Check server logs)."}, 
-                status=status.HTTP_200_OK
-            )
-
+             if email_sent:
+                return Response(
+                    {"message": "OTP re-sent to your email."}, 
+                    status=status.HTTP_200_OK
+                )
+             else:
+                 return Response(
+                    {"message": "OTP re-send failed. Please check server logs for code."}, 
+                    status=status.HTTP_200_OK
+                )
 
 # -----------------------
 # Signup Verification
@@ -109,8 +149,6 @@ class SignupVerifyView(APIView):
         except (User.DoesNotExist, OTP.DoesNotExist):
             return Response({"error": "Invalid email or OTP."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 🟢 طباعة إضافية للمساعدة في التحقق 🟢
-        print(f"DEBUG VERIFY: Attempting to verify {email} with OTP: {user_input_otp}")
         
         # التحقق من الصلاحية والرمز
         if not otp_obj.is_valid() or not bcrypt.checkpw(user_input_otp.encode('utf-8'), otp_obj.code.encode('utf-8')):
@@ -175,16 +213,33 @@ class ForgetPasswordView(APIView):
         # إنشاء وحفظ الـ OTP (ضمن المعاملة الذرية)
         otp = str(random.randint(100000, 999999))
         
-        # 🟢 الحل: طباعة OTP في الكونسول وإلغاء محاولة الإرسال 🟢
-        print(f"DEBUG OTP (Password Reset) for {email}: {otp}")
-        
         hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         OTP.objects.filter(user=user, otp_type='reset_password').delete()
         OTP.objects.create(user=user, code=hashed_otp, otp_type='reset_password')
 
-        # 🛑 تم إلغاء كتلة try/except لإرسال الإيميل بالكامل 🛑
-
-        return Response({"message": "If a user with that email exists, OTP generated (Check server logs)."}, status=status.HTTP_200_OK) 
+        # 🟢 محاولة إرسال البريد الإلكتروني 🟢
+        email_subject = 'PetCare Password Reset Code'
+        email_message = f"Your Password Reset Code is: {otp}"
+        
+        try:
+            send_mail(
+                subject=email_subject,
+                message=email_message,
+                from_email=DEFAULT_FROM_EMAIL,
+                recipient_list=[email],
+                fail_silently=False,
+            )
+            return Response({"message": "If a user with that email exists, an OTP has been sent."}, status=status.HTTP_200_OK)
+            
+        except (SMTPException, socket_timeout) as e:
+            logger.error(f"Email Error (Password Reset) to {email}: {e}")
+            # في حال فشل الإرسال، نعود إلى الرسالة العامة ونطبع الـ OTP في السجلات للمطور
+            print(f"DEBUG: OTP failed to send via email (Reset). Code: {otp}")
+            return Response({"message": "If a user with that email exists, an OTP has been generated (Email failed)."}, status=status.HTTP_200_OK) 
+        except Exception as e:
+            logger.error(f"General Error (Password Reset) to {email}: {e}")
+            print(f"DEBUG: OTP failed to send via email (Reset). Code: {otp}")
+            return Response({"message": "If a user with that email exists, an OTP has been generated (Email failed)."}, status=status.HTTP_200_OK)
         
 
 # -----------------------
@@ -287,20 +342,33 @@ class EmailChangeRequestView(APIView):
         # توليد وحفظ OTP (ضمن المعاملة الذرية)
         otp = str(random.randint(100000, 999999))
         
-        # 🟢 الحل: طباعة OTP في الكونسول وإلغاء محاولة الإرسال 🟢
-        print(f"DEBUG OTP (Email Change) for {new_email}: {otp}")
-        
         hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         
         OTP.objects.filter(user=request.user, otp_type="email_change").delete()
         OTP.objects.create(user=request.user, code=hashed_otp, otp_type="email_change")
         
-        # 🛑 تم إلغاء كتلة try/except لإرسال الإيميل بالكامل 🛑
+        # 🟢 محاولة إرسال البريد الإلكتروني إلى البريد الجديد 🟢
+        email_subject = 'PetCare Email Change Verification Code'
+        email_message = f"Your Verification Code to change your email to {new_email} is: {otp}"
         
-        return Response(
-            {"message": "Verification code generated (Check server logs)."}, 
-            status=status.HTTP_200_OK
-        )
+        try:
+            send_mail(
+                subject=email_subject,
+                message=email_message,
+                from_email=DEFAULT_FROM_EMAIL,
+                recipient_list=[new_email], # الإرسال إلى الإيميل الجديد
+                fail_silently=False,
+            )
+            return Response({"message": "Verification code sent to your new email."}, status=status.HTTP_200_OK)
+            
+        except (SMTPException, socket_timeout) as e:
+            logger.error(f"Email Error (Email Change) to {new_email}: {e}")
+            print(f"DEBUG: OTP failed to send via email (Email Change). Code: {otp}")
+            return Response({"message": "Verification code generated (Email failed, check server logs)."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            logger.error(f"General Error (Email Change) to {new_email}: {e}")
+            print(f"DEBUG: OTP failed to send via email (Email Change). Code: {otp}")
+            return Response({"message": "Verification code generated (Email failed, check server logs)."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # -----------------------
 # تغيير البريد الإلكتروني (تحقق)
