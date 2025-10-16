@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from datetime import date
+from cloudinary.models import CloudinaryField # <=== الإضافة الجديدة
 
 User = get_user_model()
 
@@ -28,19 +29,20 @@ class Pet(models.Model):
     pet_color = models.CharField(max_length=50, choices=COLOR_CHOICES)
     pet_gender = models.CharField(max_length=20)
     pet_birthday = models.DateField()
-    #pet_photo = models.ImageField(upload_to='media/pets', blank=True, null=True)
-    pet_photo = models.URLField(max_length=500, blank=True, null=True)
-    #qr_code_url = models.URLField(blank=True, null=True)
+    
+    # 💥 التعديل لربط الحقل بـ Cloudinary
+    pet_photo = CloudinaryField('pets_photos', blank=True, null=True) 
+    
+    # qr_code_url = models.URLField(blank=True, null=True)
 
     def __str__(self):
         return self.pet_name
     
-
     @property
     def age(self):
         today = date.today()
         age_in_years = today.year - self.pet_birthday.year
         if today.month < self.pet_birthday.month or \
            (today.month == self.pet_birthday.month and today.day < self.pet_birthday.day):
-            age_in_years -= 1
+             age_in_years -= 1
         return age_in_years
