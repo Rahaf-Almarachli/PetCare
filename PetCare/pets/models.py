@@ -1,27 +1,20 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from datetime import date
-# تم حذف استيراد CloudinaryField لأنه لم يعد مستخدماً
+import uuid # جديد
 
 User = get_user_model()
 
 class Pet(models.Model):
     
     COLOR_CHOICES = (
-        ('Black', 'Black'),
-        ('White','White'),
-        ('Brown', 'Brown'),
-        ('Grey','Grey'),
-        ('Golden','Golden'),
-        ('Tan','Tan'),
-        ('Creamy','Creamy'),
-        ('Cinamon','Cinamon'),
-        ('Ginger','Ginger'),
+        ('Black', 'Black'), ('White','White'), ('Brown', 'Brown'),
+        ('Grey','Grey'), ('Golden','Golden'), ('Tan','Tan'),
+        ('Creamy','Creamy'), ('Cinamon','Cinamon'), ('Ginger','Ginger'),
         ('Silver','Silver')
     )
     TYPE_CHOICES = (
-        ('Cat', 'Cat'),
-        ('Dog', 'Dog')
+        ('Cat', 'Cat'), ('Dog', 'Dog')
     )
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pets')
     pet_name = models.CharField(max_length=100)
@@ -30,10 +23,14 @@ class Pet(models.Model):
     pet_gender = models.CharField(max_length=20)
     pet_birthday = models.DateField()
     
-    # حقل الصورة الآن هو حقل رابط (URLField) لتخزين الرابط القادم من API الـ Storage
+    # حقل الصورة العادي (يتم إرسال الرابط من API الـ Storage)
     pet_photo = models.URLField(max_length=500, blank=True, null=True)
     
-    # qr_code_url = models.URLField(blank=True, null=True)
+    # 💥 حقول QR الجديدة
+    qr_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True,null=True, blank=True)
+    qr_url = models.URLField(max_length=500, blank=True, null=True) # رابط صفحة المعلومات
+    qr_code_image = models.URLField(max_length=500, blank=True, null=True) # رابط صورة QR
+    
 
     def __str__(self):
         return self.pet_name

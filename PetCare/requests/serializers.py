@@ -14,8 +14,10 @@ class SenderDetailSerializer(serializers.ModelSerializer):
     Serializes sender details (Full Name, Location, Phone) for Detail views.
     """
     location = serializers.CharField(read_only=True)
-    # 🟢 هذا الحقل يضمن إظهار رقم الهاتف في التفاصيل 🟢
-    phone_number = serializers.CharField(read_only=True)
+    # 💥 التعديل الحاسم: استخدام source='phone' لجلب رقم الهاتف
+    phone_number = serializers.CharField(source='phone', read_only=True) 
+    # full_name سيعمل كخاصية @property في نموذج المستخدم
+    full_name = serializers.CharField(read_only=True) 
     
     class Meta:
         model = User
@@ -104,10 +106,10 @@ class RequestDetailSerializer(serializers.ModelSerializer):
         model = InteractionRequest
         fields = [
             'id', 
-            'sender_first_name',     
-            'sender_location',       
-            'request_summary_text',  
-            'request_type',          
+            'sender_first_name',      
+            'sender_location',        
+            'request_summary_text',   
+            'request_type',           
         ]
         read_only_fields = fields
 
@@ -118,20 +120,18 @@ class RequestFullDetailSerializer(serializers.ModelSerializer):
     """
     Serializer يُستخدم لعرض التفاصيل الكاملة للطلب (Request Details Screen).
     """
-    # كائن sender يحتوي على الاسم الكامل، الموقع، ورقم الهاتف
+    # كائن sender يحتوي الآن على الاسم الكامل، الموقع، ورقم الهاتف الصحيح
     sender = SenderDetailSerializer(read_only=True)
     
     # الملف المرفق
     attached_file = serializers.URLField(read_only=True) 
     
-    # ❌ تم حذف owner_response_message من هنا أيضًا
-
     class Meta:
         model = InteractionRequest
         fields = [
-            'id',              
-            'sender',          
-            'message',         
-            'attached_file',   
+            'id',                 
+            'sender',             
+            'message',            
+            'attached_file',      
         ]
         read_only_fields = fields

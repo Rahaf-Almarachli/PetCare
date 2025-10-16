@@ -10,7 +10,6 @@ from django.db import transaction
 from .models import InteractionRequest
 from pets.models import Pet 
 from adoption.models import AdoptionPost 
-# 🟢 التعديل 1: استيراد نموذج MatingPost 🟢
 from mating.models import MatingPost 
 from .serializers import (
     RequestCreateSerializer, 
@@ -67,7 +66,8 @@ class CreateInteractionRequestView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         instance = serializer.save()
-        response_serializer = RequestFullDetailSerializer(instance)
+        # 💥 هنا يتم استخدام Serializer التفصيلي لعرض بيانات المرسل/المستقبل كاملاً
+        response_serializer = RequestFullDetailSerializer(instance) 
         return response_serializer.data
 
     def create(self, request, *args, **kwargs):
@@ -133,7 +133,7 @@ class RequestUpdateStatusView(APIView):
             elif request_obj.request_type == 'Mate':
                 
                 # يبقى المالك كما هو.
-                # 🟢 التعديل 2: حذف منشور التزاوج 🟢
+                # حذف منشور التزاوج
                 try:
                     MatingPost.objects.get(pet=pet).delete()
                     action_message = "Mating request approved, MatingPost deleted, and all requests deleted."
