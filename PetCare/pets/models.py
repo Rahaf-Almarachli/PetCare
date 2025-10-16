@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from datetime import date
-from cloudinary.models import CloudinaryField # <=== الإضافة الجديدة
+# تم حذف استيراد CloudinaryField لأنه لم يعد مستخدماً
 
 User = get_user_model()
 
@@ -30,8 +30,8 @@ class Pet(models.Model):
     pet_gender = models.CharField(max_length=20)
     pet_birthday = models.DateField()
     
-    # 💥 التعديل لربط الحقل بـ Cloudinary
-    pet_photo = CloudinaryField('pets_photos', blank=True, null=True) 
+    # حقل الصورة الآن هو حقل رابط (URLField) لتخزين الرابط القادم من API الـ Storage
+    pet_photo = models.URLField(max_length=500, blank=True, null=True)
     
     # qr_code_url = models.URLField(blank=True, null=True)
 

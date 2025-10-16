@@ -4,8 +4,8 @@ from .models import Pet
 class PetSerializer(serializers.ModelSerializer):
     age = serializers.IntegerField(read_only=True)
     
-    # 💥 التعديل ليتمكن من معالجة رفع الملفات (ImageField)
-    pet_photo = serializers.ImageField(required=False) 
+    # 💥 تم تغيير الحقل ليتوقع رابط URL نصي وليس ملف صورة (Image)
+    pet_photo = serializers.URLField(required=False, max_length=500) 
     
     class Meta:
         model = Pet
