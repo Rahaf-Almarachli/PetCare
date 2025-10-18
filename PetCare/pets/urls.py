@@ -1,19 +1,18 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-# 💥 يجب استيراد الـ View المخصص لصفحة معلومات الحيوان الأليف
-from .views import PetViewSet, pet_info_view 
+from .views import PetViewSet, PetQRCodeLookupView # 💥 يجب استيراد الـ View الجديد
 
 # إنشاء router تلقائي
 router = DefaultRouter()
-# تأكد من استخدام basename إذا كان هناك تعارض أو لم يتم تعريف queryset بشكل صحيح
 router.register(r'pets', PetViewSet, basename='pet') 
 
 # ربط الـ router بمسارات الـ URL
 urlpatterns = [
-    # 💥 المسار الخاص بصفحة معلومات الحيوان الأليف (الذي يتم تضمينه في QR Code)
-    # يستخدم UUID في الرابط ويشير إلى الدالة pet_info_view
-    path('pet-info/<uuid:token>/', pet_info_view, name='pet-info-detail'), 
+    # 💥 المسار المنفصل الخاص بـ API الـ QR code
+    # هذا الـ Endpoint هو ما يتم وضعه داخل الـ QR code
+    path('qr-lookup/<uuid:qr_token>/', PetQRCodeLookupView.as_view(), name='pet-qr-lookup'),
     
     # مسارات API الحالية (لـ CRUD على الحيوانات الأليفة)
     path('', include(router.urls)),
 ]
+# ⚠️ تم نسيان مسار 'pet-info-detail' (الخاص بالـ HTML) مؤقتاً بناءً على طلبك.

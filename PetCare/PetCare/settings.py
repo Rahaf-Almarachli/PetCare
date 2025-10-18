@@ -12,14 +12,14 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from datetime import timedelta
 from pathlib import Path
 import os
-#from dotenv import load_dotenv
+from dotenv import load_dotenv
 import dj_database_url  # New import
 # 💥 إضافة Cloudinary
 import cloudinary
 import cloudinary_storage
 
 # قم بتحميل متغيرات البيئة من ملف .env في جذر المشروع
-#load_dotenv()
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -120,12 +120,21 @@ WSGI_APPLICATION = 'PetCare.wsgi.application'
 
 # Database - This section has been updated to support Render and local development
 # For production on Render, it will use dj_database_url from the environment
+# ... (بقية الاستيرادات والكود) ...
+
+# Database - This section has been updated to support Render and local development
+# For production on Render, it will use dj_database_url from the environment
+# 💥 ملاحظة: يجب أن يحتوي المتغير DATABASE_URL على رابط Neon الكامل
 DATABASE_URL = os.environ.get("DATABASE_URL")
+
 if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
-            conn_max_age=600
+            # 💥 تم تغيير conn_max_age إلى 0.
+            # هذا يفرض على Django إغلاق الاتصال بقاعدة البيانات بعد كل طلب،
+            # وهو ضروري لقواعد بيانات Serverless مثل Neon لضمان عملها بشكل صحيح.
+            conn_max_age=0 
         )
     }
 else:
@@ -136,6 +145,9 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
+
+# Password validation
+# ... (بقية الإعدادات) ...
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

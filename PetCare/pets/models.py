@@ -27,9 +27,9 @@ class Pet(models.Model):
     pet_photo = models.URLField(max_length=500, blank=True, null=True)
     
     # 💥 حقول QR الجديدة
-    qr_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True,null=True, blank=True)
-    qr_url = models.URLField(max_length=500, blank=True, null=True) # رابط صفحة المعلومات
-    qr_code_image = models.URLField(max_length=500, blank=True, null=True) # رابط صورة QR
+    qr_token = models.UUIDField(default=uuid.uuid4, unique=True, null=False, blank=False)
+    qr_url = models.URLField(max_length=500, null=False, blank=False)
+    qr_code_image = models.URLField(max_length=500, null=False, blank=False)
     
 
     def __str__(self):
