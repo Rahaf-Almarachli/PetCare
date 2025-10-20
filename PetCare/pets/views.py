@@ -29,9 +29,7 @@ class PetViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         pet = self.perform_create(serializer)
-        data = {
-            PetSerializer(pet, context={'request': request}).data
-        }
+        data = PetSerializer(pet, context={'request': request}).data
         return Response(data, status=status.HTTP_201_CREATED)
 
 
