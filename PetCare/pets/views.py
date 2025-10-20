@@ -30,8 +30,7 @@ class PetViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         pet = self.perform_create(serializer)
         data = {
-            "message": "Pet added successfully",
-            "pet": PetSerializer(pet, context={'request': request}).data
+            PetSerializer(pet, context={'request': request}).data
         }
         return Response(data, status=status.HTTP_201_CREATED)
 
