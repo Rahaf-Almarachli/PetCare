@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ pet_name }}</title>
+    <style>
+        body { font-family: Arial; text-align: center; background-color: #fafafa; }
+        .card { background: white; padding: 20px; border-radius: 10px; display: inline-block; margin-top: 50px; }
+        img { border-radius: 10px; max-width: 200px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>{{ pet_name }}</h2>
+        {% if pet_photo %}
+            <img src="{{ pet_photo }}" alt="Pet Photo">
+        {% endif %}
+        <p><strong>Owner:</strong> {{ owner_name }}</p>
+        <p><strong>Phone:</strong> {{ owner_phone }}</p>
+        <p><strong>Location:</strong> {{ owner_location }}</p>
+    </div>
+</body>
+</html>

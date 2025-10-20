@@ -42,6 +42,12 @@ EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD",'tyyu utct ggrx dipo'
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 EMAIL_TIMEOUT = 5
 
+
+SITE_DOMAIN = "https://petcare-q9j0.onrender.com"
+TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
+
+
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -104,7 +110,7 @@ ROOT_URLCONF = 'PetCare.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [TEMPLATE_DIR],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -201,3 +207,6 @@ CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET')
 CORS_ALLOW_ALL_ORIGINS = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+

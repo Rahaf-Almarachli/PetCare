@@ -1,7 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from datetime import date
-import uuid # جديد
+import uuid
+from django.conf import settings
 
 User = get_user_model()
 
@@ -16,30 +17,40 @@ class Pet(models.Model):
     TYPE_CHOICES = (
         ('Cat', 'Cat'), ('Dog', 'Dog')
     )
+
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pets')
     pet_name = models.CharField(max_length=100)
-    pet_type = models.CharField(max_length=50, choices=TYPE_CHOICES) 
+    pet_type = models.CharField(max_length=50, choices=TYPE_CHOICES)
     pet_color = models.CharField(max_length=50, choices=COLOR_CHOICES)
     pet_gender = models.CharField(max_length=20)
     pet_birthday = models.DateField()
-    
-    # حقل الصورة العادي (يتم إرسال الرابط من API الـ Storage)
     pet_photo = models.URLField(max_length=500, blank=True, null=True)
-    
-    # 💥 حقول QR الجديدة
-    qr_token = models.UUIDField(default=uuid.uuid4, unique=True, null=False, blank=False)
-    qr_url = models.URLField(max_length=500, null=False, blank=False)
-    qr_code_image = models.URLField(max_length=500, null=False, blank=False)
-    
+
+    # QR Data
+    qr_token = models.CharField(max_length=100, unique=True, blank=True, null=True)
+    qr_url = models.URLField(blank=True, null=True)
 
     def __str__(self):
         return self.pet_name
-    
+
     @property
     def age(self):
         today = date.today()
         age_in_years = today.year - self.pet_birthday.year
-        if today.month < self.pet_birthday.month or \
-           (today.month == self.pet_birthday.month and today.day < self.pet_birthday.day):
-             age_in_years -= 1
+        if (today.month, today.day) < (self.pet_birthday.month, self.pet_birthday.day):
+            age_in_years -= 1
         return age_in_years
+
+    def generate_qr_data(self):
+        """ينشئ رمز فريد ويبني رابط ثابت عند إنشاء الحيوان"""
+        if not self.qr_token:
+            self.qr_token = str(uuid.uuid4())
+
+        # مثال: https://petcare-q9j0.onrender.com/api/pets/qr/<token>/
+        domain = getattr(settings, 'SITE_DOMAIN', 'https://petcare-q9j0.onrender.com')
+        self.qr_url = f"{domain}/api/pets/qr/{self.qr_token}/"
+
+    def save(self, *args, **kwargs):
+        if not self.qr_token or not self.qr_url:
+            self.generate_qr_data()
+        super().save(*args, **kwargs)
