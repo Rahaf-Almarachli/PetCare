@@ -43,6 +43,7 @@ urlpatterns = [
     path('api/', include('mood.urls')),
     path('api/',include('alerts.urls')),
     path('api/requests/',include('requests.urls')),
+    path('api/', include('rewards.urls')),
 ] #+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

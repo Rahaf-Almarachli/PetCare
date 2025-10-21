@@ -4,8 +4,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404 
 from django.db.models import Prefetch
+from django.db import transaction # للتأكد من استخدام المعاملات
 
-# الاستيرادات اللازمة
+# الاستيرادات اللازمة (يفترض أن ملف pets.models موجود)
 from pets.models import Pet
 from .models import MatingPost
 from .serializers import (
@@ -13,14 +14,14 @@ from .serializers import (
     MatingPostExistingPetSerializer, 
     NewPetMatingSerializer
 )
-# افتراض استيراد نموذج اللقاحات بشكل صحيح
-from vaccination.models import Vaccination 
+from vaccination.models import Vaccination # افتراض وجود نموذج اللقاحات
+
 # ---------------------------------------------------------------------
 
 class MatingListView(APIView):
     """
     GET: 
-    يعرض القائمة الكاملة أو يقوم بالفلترة التلقائية بناءً على target_pet_id المرسل في الـ Query Params.
+    يعرض القائمة الكاملة أو يقوم بالفلترة التلقائية بناءً على target_pet_id.
     """
     permission_classes = [permissions.IsAuthenticated]
     
@@ -28,7 +29,6 @@ class MatingListView(APIView):
         target_pet_id = request.query_params.get('target_pet_id')
         
         # 1. الاستعلام الأساسي: جلب الحيوانات المعروضة للتزاوج مع تحسين الأداء
-        # ملاحظة: تم تعديل prefetch_related لاستخدام Prefetch لربط MatingPost بكفاءة
         queryset = Pet.objects.filter(
             mating_post__isnull=False 
         ).select_related(
@@ -46,14 +46,13 @@ class MatingListView(APIView):
                 target_pet = get_object_or_404(Pet, id=target_pet_id, owner=request.user)
                 
                 # منطق تحديد الجنس المعاكس
+                required_gender = None
                 if target_pet.pet_gender == 'Male':
                     required_gender = 'Female'
                 elif target_pet.pet_gender == 'Female':
                     required_gender = 'Male'
-                else:
-                    required_gender = None 
                 
-                # تطبيق الفلترة التلقائية: الجنس المعاكس ونوع الحيوان
+                # تطبيق الفلترة التلقائية
                 if required_gender:
                     queryset = queryset.filter(
                         pet_gender=required_gender, 
@@ -73,7 +72,7 @@ class MatingListView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        # 2. تسلسل البيانات بالبنية الجديدة (target_pet_name و results)
+        # 2. تسلسل البيانات
         serializer = PetMatingDetailSerializer(queryset, many=True, context={'request': request})
         
         response_data = {
@@ -108,10 +107,19 @@ class CreateMatingPostView(APIView):
         if serializer.is_valid():
             mating_post = serializer.save()
             
-            # 🟢 التعديل الرئيسي هنا: إعادة تسلسل الحيوان المرتبط بالمنشور 🟢
-            # هذا يضمن أن 'owner_message' (الذي يأتي عبر mating_post.owner_message) يعود في الـ response.
-            response_serializer = PetMatingDetailSerializer(mating_post.pet) 
+            # 🟢 التعديل لضمان عودة owner_message في الـ response 🟢
+            # جلب كائن Pet مرة أخرى مع تحميل علاقة MatingPost (العلاقة العكسية)
+            pet_with_post = Pet.objects.filter(
+                id=mating_post.pet.id
+            ).select_related('owner').prefetch_related(
+                # هنا يجب تحميل العلاقة العكسية للمنشور (mating_post)
+                Prefetch('mating_post', queryset=MatingPost.objects.all())
+            ).first()
             
-            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            if pet_with_post:
+                response_serializer = PetMatingDetailSerializer(pet_with_post) 
+                return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                return Response({"error": "Post created but pet link failed."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
