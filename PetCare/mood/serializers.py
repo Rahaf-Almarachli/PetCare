@@ -4,20 +4,20 @@ from pets.models import Pet
 from django.utils import timezone
 
 class MoodCreateSerializer(serializers.ModelSerializer):
-    pet_name = serializers.CharField(write_only=True)
+    pet_id = serializers.IntegerField(write_only=True)
 
     class Meta:
         model = Mood
-        fields = ['pet_name', 'mood',]
+        fields = ['pet_id', 'mood',]
 
     def create(self, validated_data):
-        pet_name = validated_data.pop('pet_name')
+        pet_id = validated_data.pop('pet_id')
         request = self.context['request']
 
         try:
-            pet = Pet.objects.get(pet_name=pet_name, owner=request.user)
+            pet = Pet.objects.get(id=pet_id, owner=request.user)
         except Pet.DoesNotExist:
-            raise serializers.ValidationError({"pet_name": "Pet not found or does not belong to you."})
+            raise serializers.ValidationError({"pet_id": "Pet not found or does not belong to you."})
 
         today = timezone.now().date()
 
