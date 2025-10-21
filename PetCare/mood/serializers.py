@@ -1,4 +1,3 @@
-# mood/serializers.py
 from rest_framework import serializers
 from .models import Mood
 from pets.models import Pet
@@ -9,7 +8,7 @@ class MoodCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Mood
-        fields = ['pet_name', 'mood', 'notes']
+        fields = ['pet_name', 'mood',]
 
     def create(self, validated_data):
         pet_name = validated_data.pop('pet_name')
@@ -25,7 +24,6 @@ class MoodCreateSerializer(serializers.ModelSerializer):
         mood = Mood.objects.create(
             pet=pet,
             mood=validated_data['mood'],
-            notes=validated_data.get('notes', ''),
             date=today
         )
         return mood
@@ -37,7 +35,7 @@ class MoodResponseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Mood
-        fields = ['pet_name', 'mood', 'date', 'notes']
+        fields = ['pet_name', 'mood', 'date',]
 
     def get_date(self, obj):
         if hasattr(obj.date, "date"):
@@ -51,7 +49,7 @@ class MoodHistorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Mood
-        fields = ['pet_name', 'mood', 'date', 'notes']
+        fields = ['pet_name', 'mood', 'date',]
 
     def get_date(self, obj):
         if hasattr(obj.date, "date"):
