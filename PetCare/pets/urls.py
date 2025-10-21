@@ -12,7 +12,7 @@ urlpatterns = [
     
     # 2. مسار صفحة الويب العامة:
     # سيتم الوصول إليه عبر: /pets/qr/<token>/ (إذا تم تضمين pets.urls تحت /api/)
-    path('qr/<str:token>/', pet_qr_page, name='pet-qr-page'),
+    path('pets/qr/<str:token>/', pet_qr_page, name='pet-qr-page'),
     
     # 3. مسار API قائمة الـ QR:
     # سيتم الوصول إليه عبر: /pets/qr-codes/ (إذا تم تضمين pets.urls تحت /api/)
