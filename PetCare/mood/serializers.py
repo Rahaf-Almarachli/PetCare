@@ -55,3 +55,9 @@ class MoodHistorySerializer(serializers.ModelSerializer):
         if hasattr(obj.date, "date"):
             return obj.date.date().isoformat()
         return obj.date.isoformat()
+    
+
+class LatestMoodSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Mood
+        fields = ['mood']
