@@ -6,7 +6,7 @@ class RewardSerializer(serializers.ModelSerializer):
     """ لتسلسل المكافآت المتاحة للاستبدال """
     class Meta:
         model = Reward
-        fields = ['id', 'name', 'points_required', 'description']
+        fields = ['id', 'name', 'points_required',]
 
 class RedeemSerializer(serializers.Serializer):
     """ لطلب استبدال المكافأة """

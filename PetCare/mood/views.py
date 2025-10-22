@@ -65,7 +65,7 @@ class LatestMoodView(APIView):
                             status=status.HTTP_404_NOT_FOUND)
 
         try:
-            latest_mood = Mood.objects.filter(pet=pet).latest('date')
+            latest_mood = Mood.objects.filter(pet=pet).latest('pk')
             
         except Mood.DoesNotExist:
             return Response({"message": "No mood entries found for this pet."},
