@@ -1,15 +1,14 @@
 from rest_framework import serializers
 from .models import Reward, UserPoints, PointTransaction
-from pets.models import Pet # نحتاجها للتحقق من الأنشطة المكتملة
 
 class RewardSerializer(serializers.ModelSerializer):
     """ لتسلسل المكافآت المتاحة للاستبدال """
     class Meta:
         model = Reward
-        fields = ['id', 'name', 'points_required',]
+        fields = ['id', 'name', 'points_required', 'description']
 
 class RedeemSerializer(serializers.Serializer):
-    """ لطلب استبدال المكافأة """
+    """ لطلب استبدال المكافأة: يحتاج فقط إلى معرّف المكافأة """
     reward_id = serializers.IntegerField()
 
 class PointTransactionSerializer(serializers.ModelSerializer):

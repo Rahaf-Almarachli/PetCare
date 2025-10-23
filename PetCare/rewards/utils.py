@@ -4,10 +4,10 @@ from django.db import transaction
 @transaction.atomic
 def award_points(user, points, description):
     """
-    يمنح نقاطًا للمستخدم ويضيف سجل معاملة.
+    يمنح نقاطًا للمستخدم ويضيف سجل معاملة بشكل آمن (Atomic).
     """
     if points <= 0:
-        return
+        return 0
         
     user_points, created = UserPoints.objects.get_or_create(user=user)
     
@@ -22,4 +22,5 @@ def award_points(user, points, description):
         transaction_type='EARN',
         description=description
     )
+    # نُرجع الرصيد الجديد المحدّث
     return user_points.total_points

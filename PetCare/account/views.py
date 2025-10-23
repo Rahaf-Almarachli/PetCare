@@ -10,7 +10,13 @@ from django.conf import settings
 import smtplib 
 import logging 
 from socket import timeout as socket_timeout 
-from smtplib import SMTPException, SMTPAuthenticationError # إضافة استيراد لأخطاء SMTP محددة
+from smtplib import SMTPException, SMTPAuthenticationError
+
+# 💥 استيرادات نظام النقاط المضافة 💥
+from rewards.utils import award_points
+from activities.models import Activity, ActivityLog
+from django.db.utils import IntegrityError
+# ------------------------------------
 
 from .models import User, OTP
 from .serializers import (
@@ -300,6 +306,55 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             return UserProfileUpdateSerializer
         return UserProfileSerializer
     
+    @transaction.atomic
+    def perform_update(self, serializer):
+        user = self.request.user
+        
+        # 1. حفظ تحديثات الملف الشخصي
+        serializer.save()
+        
+        # 2. 🟢 منطق منح النقاط لإكمال الملف الشخصي (PROFILE_COMPLETE) 🟢
+        
+        # نحدد الحقول التي يعتبر اكتمالها دليلاً على اكتمال الملف الشخصي
+        # يُفترض أن الحقول (first_name, last_name, phone, location) موجودة في نموذج المستخدم.
+        is_profile_complete = (
+            user.first_name is not None and user.first_name != "" and
+            user.last_name is not None and user.last_name != "" and
+            user.phone is not None and user.phone != "" and
+            user.location is not None and user.location != "" 
+            # يمكنك إضافة: user.profile_picture is not None إذا كان حقل صورة البروفايل مطلوبًا
+        )
+        
+        # إذا كان الملف الشخصي مكتملاً ولم يحصل المستخدم على نقاط هذا النشاط من قبل
+        if is_profile_complete:
+            
+            # التحقق من أن المستخدم لم يُسجل له إكمال هذا النشاط مسبقاً (نشاط لمرة واحدة)
+            if not ActivityLog.objects.filter(user=user, activity__system_name='PROFILE_COMPLETE').exists():
+                
+                try:
+                    # جلب النشاط من قاعدة البيانات
+                    activity = Activity.objects.get(system_name='PROFILE_COMPLETE')
+                    
+                    # منح النقاط باستخدام الدالة الآمنة
+                    new_total_points = award_points(
+                        user=user,
+                        points=activity.points_value,
+                        description=f'Task: {activity.name}'
+                    )
+                    
+                    # إنشاء سجل الإكمال لمنع التكرار (مهم جداً لنشاط لمرة واحدة)
+                    ActivityLog.objects.create(user=user, activity=activity)
+                    
+                    logger.info(f"Awarded {activity.points_value} points to {user.email} for profile completion.")
+                    
+                except Activity.DoesNotExist:
+                    logger.error("Activity 'PROFILE_COMPLETE' not found in database. Check initial setup.")
+                except IntegrityError:
+                    # كحماية إضافية لو حدث تكرار غير متوقع
+                    logger.warning(f"User {user.email} attempted duplicate PROFILE_COMPLETE award.")
+        
+        # 3. يجب أن تكون عملية منح النقاط غير مرئية للمستخدم، لكن تُنفذ
+        # الرد النهائي يأتي تلقائيًا من الـ APIView
 
 # -----------------------
 # تحديث كلمة المرور

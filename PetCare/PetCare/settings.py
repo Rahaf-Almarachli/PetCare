@@ -17,6 +17,8 @@ import dj_database_url  # New import
 # 💥 إضافة Cloudinary
 import cloudinary
 import cloudinary_storage
+import json
+from django.core.exceptions import ImproperlyConfigured
 
 # قم بتحميل متغيرات البيئة من ملف .env في جذر المشروع
 #load_dotenv()
@@ -45,6 +47,17 @@ EMAIL_TIMEOUT = 5
 
 SITE_DOMAIN = "https://petcare-q9j0.onrender.com"
 TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
+
+FIREBASE_CREDENTIALS_JSON = os.environ.get('FIREBASE_CREDENTIALS_JSON')
+
+if FIREBASE_CREDENTIALS_JSON:
+    # 2. تحويل النص JSON إلى كائن Python
+    try:
+        FIREBASE_CREDENTIALS = json.loads(FIREBASE_CREDENTIALS_JSON)
+    except json.JSONDecodeError:
+        raise ImproperlyConfigured("FIREBASE_CREDENTIALS_JSON is not valid JSON.")
+else:
+    FIREBASE_CREDENTIALS = None
 
 
 
@@ -75,6 +88,8 @@ INSTALLED_APPS = [
     'cloudinary',
     'cloudinary_storage',
     'rewards',
+    'activities',
+    
 ]
 
 REST_FRAMEWORK = {
