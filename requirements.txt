@@ -17,3 +17,4 @@ transaction
 drf-nested-routers
 dj-database-url
 psycopg2-binary
+#firebase-admin
