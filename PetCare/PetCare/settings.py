@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from datetime import timedelta
 from pathlib import Path
 import os
-#from dotenv import load_dotenv
+from dotenv import load_dotenv
 import dj_database_url  # New import
 # 💥 إضافة Cloudinary
 import cloudinary
@@ -20,7 +20,7 @@ import cloudinary_storage
 
 
 # قم بتحميل متغيرات البيئة من ملف .env في جذر المشروع
-#load_dotenv()
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -75,7 +75,6 @@ INSTALLED_APPS = [
     'cloudinary',
     'cloudinary_storage',
     'rewards',
-    'activities',
     
 ]
 
@@ -210,6 +209,12 @@ CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET')
 CORS_ALLOW_ALL_ORIGINS = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+REWARD_PROFILE_COMPLETE_POINTS = 50
+REWARD_ADOPTION_POINTS = 100
+REWARD_MATING_POINTS = 80
+REWARD_PROFILE_REQUIRED_FIELDS = ['phone','location','profile_picture']
 
 
 

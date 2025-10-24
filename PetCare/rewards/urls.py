@@ -1,12 +1,14 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import RewardListViewSet, UserPointsViewSet, RedeemRewardView
-
-router = DefaultRouter()
-router.register(r'list', RewardListViewSet, basename='reward-list')
-router.register(r'wallet', UserPointsViewSet, basename='user-wallet') 
+from django.urls import path
+from .views import (
+    RewardsSummaryView,
+    RewardListView,
+    RedeemRewardView,
+    MyRedeemedRewardsView
+)
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('redeem/', RedeemRewardView.as_view(), name='reward-redeem'),
+    path('summary/', RewardsSummaryView.as_view(), name='rewards-summary'),
+    path('available/', RewardListView.as_view(), name='rewards-list'),
+    path('redeem/<int:reward_id>/', RedeemRewardView.as_view(), name='redeem-reward'),
+    path('my-redeemed/', MyRedeemedRewardsView.as_view(), name='my-redeemed-rewards'),
 ]

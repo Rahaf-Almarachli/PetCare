@@ -1,12 +1,10 @@
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.db import transaction 
 
-# استيراد النماذج
 from .models import InteractionRequest
 from pets.models import Pet 
 from adoption.models import AdoptionPost 
@@ -16,6 +14,11 @@ from .serializers import (
     RequestDetailSerializer, 
     RequestFullDetailSerializer 
 )
+
+# 🟢 استيراد نظام النقاط
+from rewards.models import UserPoints, PointsTransaction
+
+
 
 # ----------------------------------------------------
 # 1. View لعرض قائمة الطلبات (Inbox)
@@ -78,91 +81,72 @@ class CreateInteractionRequestView(generics.CreateAPIView):
         
         return Response(response_data, status=status.HTTP_201_CREATED)
 
-# ----------------------------------------------------
-# 4. View لتحديث حالة الطلب (المعدَّل)
-# ----------------------------------------------------
+
 class RequestUpdateStatusView(APIView):
-    """
-    PATCH: تحديث حالة الطلب (قبول/رفض) وضمان إزالة المنشورات عند القبول (Adoption/Mating).
-    """
     permission_classes = [permissions.IsAuthenticated]
 
-    @transaction.atomic # لضمان سلامة قاعدة البيانات
+    @transaction.atomic
     def patch(self, request, id):
         request_obj = get_object_or_404(InteractionRequest, id=id)
         user = request.user
 
-        # 1. التحقق من الصلاحيات
         if request_obj.receiver != user:
-            return Response(
-                {"detail": "You do not have permission to modify this request."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
         new_status = request.data.get('status')
         pet = request_obj.pet
-        
-        # التحقق من الحالة
+
         if not new_status or new_status not in ['Accepted', 'Rejected']:
-            return Response({"detail": "Invalid or missing 'status' field (must be Accepted or Rejected)."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Invalid status."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. تحديث حالة الطلب
         request_obj.status = new_status
-        request_obj.save(update_fields=['status']) 
-
+        request_obj.save(update_fields=['status'])
 
         if new_status == 'Accepted':
-            
+            sender = request_obj.sender
             action_message = ""
-            
-            # أ. منطق التعامل مع حالة الحيوان حسب نوع الطلب (التبني)
-            if request_obj.request_type == 'Adoption':
-                
-                # 1. نقل ملكية الحيوان إلى المتبني
-                pet.owner = request_obj.sender 
-                pet.save()
-                
-                # حذف منشور التبني
-                try:
-                    AdoptionPost.objects.get(pet=pet).delete()
-                    action_message = "ownership transferred, pet removed from adoption list, and all requests deleted."
-                except AdoptionPost.DoesNotExist:
-                    action_message = "ownership transferred. AdoptionPost was already removed or didn't exist."
-            
-            # ب. منطق التعامل مع حالة الحيوان حسب نوع الطلب (التزاوج)
-            elif request_obj.request_type == 'Mate':
-                
-                # يبقى المالك كما هو.
-                # حذف منشور التزاوج
-                try:
-                    MatingPost.objects.get(pet=pet).delete()
-                    action_message = "Mating request approved, MatingPost deleted, and all requests deleted."
-                except MatingPost.DoesNotExist:
-                    action_message = "Mating request approved. Note: MatingPost was not found."
 
-            
-            # ج. حذف جميع طلبات التفاعل لهذا الحيوان
+            # 🟢 تبنّي
+            if request_obj.request_type == 'Adoption':
+                pet.owner = sender
+                pet.save()
+                AdoptionPost.objects.filter(pet=pet).delete()
+
+                # 🏆 أضف النقاط
+                points, _ = UserPoints.objects.get_or_create(user=sender)
+                points.balance += 100
+                points.save()
+                PointsTransaction.objects.create(
+                    user=sender,
+                    event_type="adoption_success",
+                    reference=f"adopt:{pet.id}",
+                    amount=100
+                )
+                action_message = "Adoption completed (+100 points)."
+
+            # 🟢 تزاوج
+            elif request_obj.request_type == 'Mate':
+                MatingPost.objects.filter(pet=pet).delete()
+
+                # 🏆 أضف النقاط
+                points, _ = UserPoints.objects.get_or_create(user=sender)
+                points.balance += 80
+                points.save()
+                PointsTransaction.objects.create(
+                    user=sender,
+                    event_type="mating_success",
+                    reference=f"mate:{pet.id}",
+                    amount=80
+                )
+                action_message = "Mating completed (+80 points)."
+
             InteractionRequest.objects.filter(pet=pet).delete()
-            
-            # د. الرد بعد العملية
+
             return Response(
-                {"detail": f"Request accepted. Pet {pet.id} {action_message}"},
+                {"detail": f"Request accepted. {action_message}"},
                 status=status.HTTP_200_OK
             )
 
         elif new_status == 'Rejected':
-            
-            # هـ. حذف الطلب المرفوض فقط من Inbox المالك
-            request_id = request_obj.id
             request_obj.delete()
-
-            # و. الرد بعد العملية
-            return Response(
-                {"detail": f"Request {request_id} rejected and deleted from inbox."},
-                status=status.HTTP_200_OK
-            )
-        
-        else:
-            # يجب أن لا يصل الكود إلى هنا
-            serializer = RequestFullDetailSerializer(request_obj) 
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response({"detail": "Request rejected."}, status=status.HTTP_200_OK)

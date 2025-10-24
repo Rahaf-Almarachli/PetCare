@@ -1,18 +1,20 @@
 from rest_framework import serializers
-from .models import Reward, UserPoints, PointTransaction
+from .models import Reward, RedeemedReward, UserPoints, PointsTransaction
 
 class RewardSerializer(serializers.ModelSerializer):
-    """ لتسلسل المكافآت المتاحة للاستبدال """
     class Meta:
         model = Reward
-        fields = ['id', 'name', 'points_required', 'description']
+        fields = ['id', 'title', 'description', 'points_required', 'is_active']
 
-class RedeemSerializer(serializers.Serializer):
-    """ لطلب استبدال المكافأة: يحتاج فقط إلى معرّف المكافأة """
-    reward_id = serializers.IntegerField()
 
-class PointTransactionSerializer(serializers.ModelSerializer):
-    """ لعرض سجل المعاملات """
+class RedeemedRewardSerializer(serializers.ModelSerializer):
+    reward = RewardSerializer()
+
     class Meta:
-        model = PointTransaction
-        fields = ['points_change', 'transaction_type', 'description', 'timestamp']
+        model = RedeemedReward
+        fields = ['id', 'reward', 'redeemed_at']
+
+
+class PointsSummarySerializer(serializers.Serializer):
+    total_points = serializers.IntegerField()
+    transactions = serializers.ListField()

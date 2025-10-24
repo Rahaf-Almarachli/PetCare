@@ -10,13 +10,9 @@ from django.conf import settings
 import smtplib 
 import logging 
 from socket import timeout as socket_timeout 
-from smtplib import SMTPException, SMTPAuthenticationError
-
-# 💥 استيرادات نظام النقاط المضافة 💥
-from rewards.utils import award_points
-from activities.models import Activity, ActivityLog
-from django.db.utils import IntegrityError
-# ------------------------------------
+from smtplib import SMTPException, SMTPAuthenticationError # إضافة استيراد لأخطاء SMTP محددة
+# في الأعلى نضيف هذا الاستيراد الجديد 👇
+from rewards.models import UserPoints, PointsTransaction
 
 from .models import User, OTP
 from .serializers import (
@@ -305,56 +301,56 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         if self.request.method in ['PUT', 'PATCH']:
             return UserProfileUpdateSerializer
         return UserProfileSerializer
-    
-    @transaction.atomic
-    def perform_update(self, serializer):
-        user = self.request.user
-        
-        # 1. حفظ تحديثات الملف الشخصي
+
+    def update(self, request, *args, **kwargs):
+        """
+        عند تحديث المستخدم لملفه الشخصي، نتحقق مما إذا كانت هذه أول مرة يكتمل فيها.
+        إذا كانت كذلك، نمنحه نقاط مكافأة (50 نقطة).
+        """
+        user = self.get_object()
+        partial = kwargs.pop('partial', False)
+        serializer = self.get_serializer(user, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        # حفظ البيانات الجديدة
         serializer.save()
-        
-        # 2. 🟢 منطق منح النقاط لإكمال الملف الشخصي (PROFILE_COMPLETE) 🟢
-        
-        # نحدد الحقول التي يعتبر اكتمالها دليلاً على اكتمال الملف الشخصي
-        # يُفترض أن الحقول (first_name, last_name, phone, location) موجودة في نموذج المستخدم.
-        is_profile_complete = (
-            user.first_name is not None and user.first_name != "" and
-            user.last_name is not None and user.last_name != "" and
-            user.phone is not None and user.phone != "" and
-            user.location is not None and user.location != "" 
-            # يمكنك إضافة: user.profile_picture is not None إذا كان حقل صورة البروفايل مطلوبًا
-        )
-        
-        # إذا كان الملف الشخصي مكتملاً ولم يحصل المستخدم على نقاط هذا النشاط من قبل
-        if is_profile_complete:
-            
-            # التحقق من أن المستخدم لم يُسجل له إكمال هذا النشاط مسبقاً (نشاط لمرة واحدة)
-            if not ActivityLog.objects.filter(user=user, activity__system_name='PROFILE_COMPLETE').exists():
-                
-                try:
-                    # جلب النشاط من قاعدة البيانات
-                    activity = Activity.objects.get(system_name='PROFILE_COMPLETE')
-                    
-                    # منح النقاط باستخدام الدالة الآمنة
-                    new_total_points = award_points(
-                        user=user,
-                        points=activity.points_value,
-                        description=f'Task: {activity.name}'
-                    )
-                    
-                    # إنشاء سجل الإكمال لمنع التكرار (مهم جداً لنشاط لمرة واحدة)
-                    ActivityLog.objects.create(user=user, activity=activity)
-                    
-                    logger.info(f"Awarded {activity.points_value} points to {user.email} for profile completion.")
-                    
-                except Activity.DoesNotExist:
-                    logger.error("Activity 'PROFILE_COMPLETE' not found in database. Check initial setup.")
-                except IntegrityError:
-                    # كحماية إضافية لو حدث تكرار غير متوقع
-                    logger.warning(f"User {user.email} attempted duplicate PROFILE_COMPLETE award.")
-        
-        # 3. يجب أن تكون عملية منح النقاط غير مرئية للمستخدم، لكن تُنفذ
-        # الرد النهائي يأتي تلقائيًا من الـ APIView
+
+        # التحقق من إكمال الملف الشخصي
+        all_fields_filled = all([
+            user.first_name,
+            user.last_name,
+            user.phone,
+            user.location,
+            user.profile_picture
+        ])
+
+        # نحصل أو ننشئ سجل النقاط
+        points, _ = UserPoints.objects.get_or_create(user=user)
+
+        # نتحقق إن كان المستخدم لم يحصل بعد على مكافأة إكمال الملف
+        has_completed_before = PointsTransaction.objects.filter(
+            user=user,
+            event_type='profile_completed'
+        ).exists()
+
+        # 🟢 منح المكافأة إذا كانت أول مرة يُكمل فيها الملف الشخصي
+        if all_fields_filled and not has_completed_before:
+            points.balance += 50
+            points.save()
+
+            PointsTransaction.objects.create(
+                user=user,
+                event_type='profile_completed',
+                amount=50,
+                reference='Profile completion reward'
+            )
+
+        return Response({
+            "message": "Profile updated successfully.",
+            "user": UserProfileSerializer(user).data,
+            "current_points": points.balance
+        }, status=status.HTTP_200_OK)
+    
 
 # -----------------------
 # تحديث كلمة المرور

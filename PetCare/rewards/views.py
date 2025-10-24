@@ -1,73 +1,79 @@
-from rest_framework import viewsets, permissions, status, views
+from rest_framework import generics, permissions, status
+from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.decorators import action
-from django.shortcuts import get_object_or_404
-from django.db import transaction
+from .models import UserPoints, PointsTransaction, Reward, RedeemedReward
+from .serializers import RewardSerializer, RedeemedRewardSerializer
 
-from .models import Reward, UserPoints, PointTransaction
-from .serializers import RewardSerializer, PointTransactionSerializer, RedeemSerializer
+# ✅ عرض ملخص النقاط
+class RewardsSummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
 
-class RewardListViewSet(viewsets.ReadOnlyModelViewSet):
-    """ واجهة لعرض قائمة المكافآت المتاحة للاستبدال. """
-    queryset = Reward.objects.filter(is_active=True).order_by('points_required')
+    def get(self, request):
+        user = request.user
+        points, _ = UserPoints.objects.get_or_create(user=user)
+        transactions = PointsTransaction.objects.filter(user=user).order_by('-created_at')
+
+        return Response({
+            "total_points": points.balance,
+            "transactions": [
+                {
+                    "event_type": t.event_type,
+                    "amount": t.amount,
+                    "created_at": t.created_at
+                } for t in transactions
+            ]
+        })
+
+
+# ✅ عرض جميع المكافآت المتاحة
+class RewardListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
     serializer_class = RewardSerializer
+
+    def get_queryset(self):
+        return Reward.objects.filter(is_active=True).order_by('points_required')
+
+
+# ✅ استبدال مكافأة
+class RedeemRewardView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-class UserPointsViewSet(viewsets.ViewSet):
-    """ واجهة لعرض رصيد المستخدم وسجل معاملاته. """
+    def post(self, request, reward_id):
+        user = request.user
+        reward = Reward.objects.filter(id=reward_id, is_active=True).first()
+
+        if not reward:
+            return Response({"error": "Reward not found or inactive."}, status=status.HTTP_404_NOT_FOUND)
+
+        points, _ = UserPoints.objects.get_or_create(user=user)
+
+        if points.balance < reward.points_required:
+            return Response({"error": "Not enough points."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # خصم النقاط
+        points.balance -= reward.points_required
+        points.save()
+
+        # سجل العملية
+        PointsTransaction.objects.create(
+            user=user,
+            event_type='reward_redeemed',
+            reference=f"reward:{reward.id}",
+            amount=-reward.points_required
+        )
+
+        redeemed = RedeemedReward.objects.create(user=user, reward=reward)
+
+        return Response({
+            "message": f"You redeemed {reward.title} successfully!",
+            "remaining_points": points.balance
+        }, status=status.HTTP_200_OK)
+
+
+# ✅ عرض المكافآت التي تم استبدالها
+class MyRedeemedRewardsView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = RedeemedRewardSerializer
 
-    @action(detail=False, methods=['get'], url_path='me')
-    def get_my_points(self, request):
-        """ إرجاع إجمالي نقاط المستخدم الحالي. """
-        wallet, created = UserPoints.objects.get_or_create(user=request.user)
-        return Response({'total_points': wallet.total_points}, status=status.HTTP_200_OK)
-
-    @action(detail=False, methods=['get'])
-    def transactions(self, request):
-        """ إرجاع سجل المعاملات النقطية. """
-        transactions = PointTransaction.objects.filter(user=request.user).order_by('-timestamp')
-        page = self.paginate_queryset(transactions) # يمكنك إزالة pagination إذا لم تكن تحتاجه
-        if page is not None:
-            serializer = PointTransactionSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = PointTransactionSerializer(transactions, many=True)
-        return Response(serializer.data)
-
-class RedeemRewardView(views.APIView):
-    """ نقطة نهاية POST لمعالجة منطق استبدال المكافأة. """
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request, *args, **kwargs):
-        serializer = RedeemSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        reward_id = serializer.validated_data['reward_id']
-
-        with transaction.atomic():
-            user = request.user
-            wallet = get_object_or_404(UserPoints, user=user)
-            reward = get_object_or_404(Reward, id=reward_id, is_active=True)
-
-            if wallet.total_points < reward.points_required:
-                return Response({'detail': 'Insufficient points to redeem this reward.'}, 
-                                status=status.HTTP_400_BAD_REQUEST)
-
-            # 1. خصم النقاط
-            wallet.total_points -= reward.points_required
-            wallet.save()
-
-            # 2. تسجيل معاملة الاستبدال
-            PointTransaction.objects.create(
-                user=user,
-                points_change=-reward.points_required,
-                transaction_type='REDEEM',
-                description=f'Redeemed reward: {reward.name}'
-            )
-
-            # (هنا يمكن إضافة منطق إرسال تفاصيل المكافأة للمستخدم)
-
-            return Response({
-                'detail': f'Successfully redeemed {reward.name}.',
-                'points_remaining': wallet.total_points
-            }, status=status.HTTP_200_OK)
+    def get_queryset(self):
+        return RedeemedReward.objects.filter(user=self.request.user).select_related('reward').order_by('-redeemed_at')
