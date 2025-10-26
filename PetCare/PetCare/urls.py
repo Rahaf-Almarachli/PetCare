@@ -44,6 +44,7 @@ urlpatterns = [
     path('api/',include('alerts.urls')),
     path('api/requests/',include('requests.urls')),
     path('api/rewards/', include('rewards.urls')),
+    path('api/requests/', include('requests.urls')),
 ] #+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

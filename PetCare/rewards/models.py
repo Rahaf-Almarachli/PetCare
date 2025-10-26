@@ -1,51 +1,68 @@
 from django.db import models
-from django.contrib.auth import get_user_model
+from django.conf import settings
+from django.db.models import Sum
 
-User = get_user_model()
-
-class UserPoints(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='points')
-    balance = models.IntegerField(default=0)
-
-    def __str__(self):
-        return f"{self.user.email} - {self.balance} pts"
-
-
-class PointsTransaction(models.Model):
-    EVENT_CHOICES = [
-        ('profile_completed', 'Profile Completed'),
-        ('adoption_success', 'Adoption Success'),
-        ('mating_success', 'Mating Success'),
-        ('reward_redeemed', 'Reward Redeemed'),
-    ]
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
-    event_type = models.CharField(max_length=50, choices=EVENT_CHOICES)
-    reference = models.CharField(max_length=200, blank=True, null=True)
-    amount = models.IntegerField()
+# -----------------
+# 1. نموذج المكافآت (Reward)
+# يُستخدم لتحديد الأشياء التي يمكن للمستخدمين استبدال نقاطهم بها
+# -----------------
+class Reward(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    points_required = models.PositiveIntegerField()
+    description = models.TextField()
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        sign = "+" if self.amount > 0 else ""
-        return f"{self.user.email} - {self.event_type} ({sign}{self.amount})"
+        return f"{self.name} ({self.points_required} pts)"
 
-
-# 🏆 قائمة المكافآت المتاحة
-class Reward(models.Model):
-    title = models.CharField(max_length=100)
-    description = models.TextField(blank=True)
-    points_required = models.PositiveIntegerField()
-    is_active = models.BooleanField(default=True)
+# -----------------
+# 2. نموذج سجل النقاط (UserPointsLog)
+# هو سجل المعاملات الدائم. رصيد المستخدم هو مجموع 'points_change'.
+# -----------------
+class UserPointsLog(models.Model):
+    # نوع المعاملة: كسب EARN أو صرف REDEEM
+    TRANSACTION_TYPES = [
+        ('EARN', 'Earned Points'),
+        ('REDEEM', 'Redeemed Points'),
+    ]
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='points_logs')
+    points_change = models.IntegerField(
+        help_text="Positive for earning, negative for redeeming/deduction."
+    )
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPES)
+    description = models.CharField(max_length=255)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = "User Points Log"
+        verbose_name_plural = "User Points Logs"
 
     def __str__(self):
-        return f"{self.title} ({self.points_required} pts)"
+        return f"{self.user.email} | {self.points_change} pts ({self.transaction_type})"
 
+# -----------------
+# 3. نموذج المحفظة الوهمي (UserWallet) والمدير المخصص
+# يُستخدم لتبسيط استدعاء الرصيد المحسوب (مثل user.userwallet.total_points)
+# -----------------
+class UserWalletManager(models.Manager):
+    def get_user_total_points(self, user):
+        """ يحسب مجموع النقاط للمستخدم من سجل المعاملات. """
+        result = UserPointsLog.objects.filter(user=user).aggregate(Sum('points_change'))
+        return result['points_change__sum'] or 0
 
-# 💎 سجل المكافآت التي استبدلها المستخدم
-class RedeemedReward(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='redeemed_rewards')
-    reward = models.ForeignKey(Reward, on_delete=models.CASCADE, related_name='redemptions')
-    redeemed_at = models.DateTimeField(auto_now_add=True)
+class UserWallet(models.Model):
+    """ نموذج وهمي لإدارة المحفظة. """
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True)
+    
+    objects = UserWalletManager()
 
+    @property
+    def total_points(self):
+        """ خاصية تُعيد الرصيد المحسوب. """
+        return self.objects.get_user_total_points(self.user)
+    
     def __str__(self):
-        return f"{self.user.email} redeemed {self.reward.title}"
+        return f"Wallet for {self.user.email} | Total Points: {self.total_points}"

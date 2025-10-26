@@ -6,13 +6,16 @@ from rest_framework.response import Response
 from rest_framework import generics, status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
+from django.db.utils import IntegrityError
 from django.conf import settings
 import smtplib 
 import logging 
 from socket import timeout as socket_timeout 
-from smtplib import SMTPException, SMTPAuthenticationError # إضافة استيراد لأخطاء SMTP محددة
-# في الأعلى نضيف هذا الاستيراد الجديد 👇
-from rewards.models import UserPoints, PointsTransaction
+from smtplib import SMTPException, SMTPAuthenticationError 
+
+# 🟢 الاستيرادات الجديدة لنظام النقاط 🟢
+from rewards.utils import award_points
+from activities.models import Activity, ActivityLog
 
 from .models import User, OTP
 from .serializers import (
@@ -110,24 +113,24 @@ class SignupRequestView(APIView):
         # رسالة الرد تعتمد على الحالة
         if user_created:
             if email_sent:
-                 return Response(
+                return Response(
                     {"message": "User created. OTP sent to your email."}, 
                     status=status.HTTP_201_CREATED
                 )
             else:
-                 # إذا لم يُرسل الإيميل، نعطي رسالة واضحة ونبقى على حالة 201
-                 return Response(
+                # إذا لم يُرسل الإيميل، نعطي رسالة واضحة ونبقى على حالة 201
+                return Response(
                     {"message": "User created, but OTP email failed to send. Please check server logs for code."}, 
                     status=status.HTTP_201_CREATED
                 )
         else:
-             if email_sent:
+            if email_sent:
                 return Response(
                     {"message": "OTP re-sent to your email."}, 
                     status=status.HTTP_200_OK
                 )
-             else:
-                 return Response(
+            else:
+                return Response(
                     {"message": "OTP re-send failed. Please check server logs for code."}, 
                     status=status.HTTP_200_OK
                 )
@@ -302,55 +305,89 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             return UserProfileUpdateSerializer
         return UserProfileSerializer
 
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         """
         عند تحديث المستخدم لملفه الشخصي، نتحقق مما إذا كانت هذه أول مرة يكتمل فيها.
-        إذا كانت كذلك، نمنحه نقاط مكافأة (50 نقطة).
+        إذا كانت كذلك، نمنحه نقاط مكافأة (50 نقطة) باستخدام نظام Activities.
         """
         user = self.get_object()
+        
+        # 🟢 حفظ حالة اكتمال الملف قبل التحديث 🟢
+        # نعتبر الملف كاملاً إذا كانت جميع الحقول المطلوبة مملوءة (قبل هذا التحديث)
+        was_complete_before = all([
+            user.first_name,
+            user.last_name,
+            user.phone,
+            user.location,
+            user.profile_picture # إذا كان الحقل اختياريًا، يمكنك إزالته
+        ])
+        
         partial = kwargs.pop('partial', False)
         serializer = self.get_serializer(user, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 
-        # حفظ البيانات الجديدة
-        serializer.save()
+        # 1. حفظ البيانات الجديدة (داخل المعاملة الذرية)
+        self.perform_update(serializer) # استخدام الدالة المدمجة
 
-        # التحقق من إكمال الملف الشخصي
-        all_fields_filled = all([
+        # 2. 🟢 التحقق من إكمال الملف الشخصي بعد التحديث ومنح المكافأة 🟢
+        
+        # حالة اكتمال الملف الشخصي بعد التحديث
+        is_complete_now = all([
             user.first_name,
             user.last_name,
             user.phone,
             user.location,
             user.profile_picture
         ])
+        
+        points_awarded = 0
+        
+        # يتم منح المكافأة فقط إذا أصبح الملف مكتملاً الآن ولم يكن مكتملاً من قبل
+        if is_complete_now and not was_complete_before:
+            try:
+                # 🛑 اسم النشاط لمرة واحدة 🛑
+                ACTIVITY_NAME = 'PROFILE_COMPLETE'
+                
+                activity = Activity.objects.get(system_name=ACTIVITY_NAME)
+                
+                # التحقق من أن المستخدم لم يكمل هذا النشاط بعد (لأنه يفترض أنه نشاط لمرة واحدة)
+                if not ActivityLog.objects.filter(user=user, activity=activity).exists():
+                    
+                    # 2. منح النقاط الآمن
+                    award_points(
+                        user=user,
+                        points=activity.points_value,
+                        description=f'Task: {activity.name}'
+                    )
+                    points_awarded = activity.points_value
+                    
+                    # 3. تسجيل الإكمال لمنع التكرار (استخدام IntegrityError كحماية إضافية)
+                    ActivityLog.objects.create(user=user, activity=activity)
+                    logger.info(f"Awarded {points_awarded} pts to {user.email} for profile completion.")
+                    
+            except Activity.DoesNotExist:
+                logger.error(f"Activity '{ACTIVITY_NAME}' not found in database. Check initial setup.")
+            except IntegrityError:
+                # نادر الحدوث بوجود شرط عدم التكرار أعلاه، ولكنه حماية إضافية
+                logger.warning(f"User {user.email} attempted duplicate {ACTIVITY_NAME} award (Integrity Error).")
 
-        # نحصل أو ننشئ سجل النقاط
-        points, _ = UserPoints.objects.get_or_create(user=user)
-
-        # نتحقق إن كان المستخدم لم يحصل بعد على مكافأة إكمال الملف
-        has_completed_before = PointsTransaction.objects.filter(
-            user=user,
-            event_type='profile_completed'
-        ).exists()
-
-        # 🟢 منح المكافأة إذا كانت أول مرة يُكمل فيها الملف الشخصي
-        if all_fields_filled and not has_completed_before:
-            points.balance += 50
-            points.save()
-
-            PointsTransaction.objects.create(
-                user=user,
-                event_type='profile_completed',
-                amount=50,
-                reference='Profile completion reward'
-            )
+        # 4. استرجاع الرصيد الحالي للمستخدم (المحسوب)
+        current_points = user.userwallet.total_points # يُفترض أن 'user' لديه related_name لـ UserWallet
 
         return Response({
             "message": "Profile updated successfully.",
             "user": UserProfileSerializer(user).data,
-            "current_points": points.balance
+            "current_points": current_points,
+            "points_awarded_now": points_awarded
         }, status=status.HTTP_200_OK)
     
+    # -----------------------
+    # الدالة الأساسية لحفظ التحديث
+    # -----------------------
+    def perform_update(self, serializer):
+        serializer.save()
+
 
 # -----------------------
 # تحديث كلمة المرور

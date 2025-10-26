@@ -4,6 +4,12 @@ from rest_framework.response import Response
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.db import transaction 
+from django.db.utils import IntegrityError
+import logging
+
+# 🟢 الاستيرادات الجديدة لنظام النقاط 🟢
+from rewards.utils import award_points
+from activities.models import Activity, ActivityLog 
 
 from .models import InteractionRequest
 from pets.models import Pet 
@@ -15,10 +21,7 @@ from .serializers import (
     RequestFullDetailSerializer 
 )
 
-# 🟢 استيراد نظام النقاط
-from rewards.models import UserPoints, PointsTransaction
-
-
+logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------
 # 1. View لعرض قائمة الطلبات (Inbox)
@@ -81,7 +84,9 @@ class CreateInteractionRequestView(generics.CreateAPIView):
         
         return Response(response_data, status=status.HTTP_201_CREATED)
 
-
+# ----------------------------------------------------
+# 4. View لتحديث حالة الطلب (قبول/رفض)
+# ----------------------------------------------------
 class RequestUpdateStatusView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -90,6 +95,7 @@ class RequestUpdateStatusView(APIView):
         request_obj = get_object_or_404(InteractionRequest, id=id)
         user = request.user
 
+        # التحقق من أن المستخدم هو المستقبل (الموافق)
         if request_obj.receiver != user:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -105,48 +111,72 @@ class RequestUpdateStatusView(APIView):
         if new_status == 'Accepted':
             sender = request_obj.sender
             action_message = ""
+            points_awarded = 0
+            
+            # 🟢 منطق الكسب
+            try:
+                # 🏆 تبنّي (200 نقطة)
+                if request_obj.request_type == 'Adoption':
+                    ACTIVITY_NAME = 'ADOPT_PET'
+                    
+                    # نقل ملكية الحيوان وحذف المنشور والطلبات الأخرى
+                    pet.owner = sender
+                    pet.save()
+                    AdoptionPost.objects.filter(pet=pet).delete()
+                    
+                    # منح النقاط
+                    activity = Activity.objects.get(system_name=ACTIVITY_NAME)
+                    award_points(
+                        user=sender,
+                        points=activity.points_value,
+                        description=f'Task: {activity.name} - Pet {pet.id}'
+                    )
+                    points_awarded = activity.points_value
+                    ActivityLog.objects.create(user=sender, activity=activity)
+                    
+                    action_message = f"Adoption completed (+{points_awarded} points)."
 
-            # 🟢 تبنّي
-            if request_obj.request_type == 'Adoption':
-                pet.owner = sender
-                pet.save()
-                AdoptionPost.objects.filter(pet=pet).delete()
+                # 🏆 تزاوج (100 نقطة)
+                elif request_obj.request_type == 'Mate':
+                    ACTIVITY_NAME = 'PET_MATING'
+                    
+                    # حذف منشور التزاوج والطلبات الأخرى
+                    MatingPost.objects.filter(pet=pet).delete()
+                    
+                    # منح النقاط
+                    activity = Activity.objects.get(system_name=ACTIVITY_NAME)
+                    award_points(
+                        user=sender,
+                        points=activity.points_value,
+                        description=f'Task: {activity.name} - Pet {pet.id}'
+                    )
+                    points_awarded = activity.points_value
+                    ActivityLog.objects.create(user=sender, activity=activity)
+                    
+                    action_message = f"Mating completed (+{points_awarded} points)."
 
-                # 🏆 أضف النقاط
-                points, _ = UserPoints.objects.get_or_create(user=sender)
-                points.balance += 100
-                points.save()
-                PointsTransaction.objects.create(
-                    user=sender,
-                    event_type="adoption_success",
-                    reference=f"adopt:{pet.id}",
-                    amount=100
-                )
-                action_message = "Adoption completed (+100 points)."
+            except Activity.DoesNotExist:
+                logger.error(f"Activity '{ACTIVITY_NAME}' not found in database. Check initial setup.")
+                action_message = "Action completed, but points were NOT awarded (Activity not found)."
+            except IntegrityError:
+                 logger.warning(f"User {sender.email} attempted duplicate {ACTIVITY_NAME} award (Integrity Error).")
 
-            # 🟢 تزاوج
-            elif request_obj.request_type == 'Mate':
-                MatingPost.objects.filter(pet=pet).delete()
-
-                # 🏆 أضف النقاط
-                points, _ = UserPoints.objects.get_or_create(user=sender)
-                points.balance += 80
-                points.save()
-                PointsTransaction.objects.create(
-                    user=sender,
-                    event_type="mating_success",
-                    reference=f"mate:{pet.id}",
-                    amount=80
-                )
-                action_message = "Mating completed (+80 points)."
-
+            # حذف جميع الطلبات الأخرى المتعلقة بهذا الحيوان (لأن العملية انتهت)
             InteractionRequest.objects.filter(pet=pet).delete()
 
+            # استرجاع رصيد النقاط الجديد للمرسل (الكاسب)
+            current_points = sender.userwallet.total_points
+
             return Response(
-                {"detail": f"Request accepted. {action_message}"},
+                {
+                    "detail": f"Request accepted. {action_message}",
+                    "new_total_points": current_points,
+                    "points_awarded": points_awarded
+                },
                 status=status.HTTP_200_OK
             )
 
         elif new_status == 'Rejected':
+            # نرفض الطلب ونحذفه
             request_obj.delete()
             return Response({"detail": "Request rejected."}, status=status.HTTP_200_OK)

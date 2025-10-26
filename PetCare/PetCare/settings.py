@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     'cloudinary',
     'cloudinary_storage',
     'rewards',
+    'activities',
     
 ]
 
