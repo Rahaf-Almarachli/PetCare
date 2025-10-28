@@ -20,4 +20,5 @@ qrcode
 Pillow
 cloudinary
 django-cloudinary-storage
-django-environ # ضروري لقراءة المتغيرات من ملف .env
+django-environ
+dotenv # ضروري لقراءة المتغيرات من ملف .env

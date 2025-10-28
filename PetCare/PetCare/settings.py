@@ -71,12 +71,10 @@ INSTALLED_APPS = [
     'mood',
     'alerts',
     'requests',
-    # 💥 إضافات Cloudinary
     'cloudinary',
     'cloudinary_storage',
     'rewards',
     'activities',
-    
 ]
 
 REST_FRAMEWORK = {
