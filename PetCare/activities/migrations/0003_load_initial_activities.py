@@ -33,7 +33,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         # **هام**: استبدل '000X_previous_migration_name' بالاسم الحقيقي لآخر ملف ترحيل في activities
-        ('activities', '000X_previous_migration_name'), 
+        ('activities', '0002_previous_migration_name'), 
     ]
 
     operations = [
