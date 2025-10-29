@@ -1,24 +1,24 @@
 from rest_framework import serializers
 from .models import UserWallet, Reward, UserPointsLog
 
-# ----------------------------------------------------
-# 1. Serializer لعرض محفظة المستخدم (الرصيد الكلي)
-# ----------------------------------------------------
+## ----------------------------------------------------
+## 1. Serializer لعرض محفظة المستخدم (الرصيد الكلي)
+## ----------------------------------------------------
 
 class UserWalletSerializer(serializers.ModelSerializer):
     # نستخدم ReadOnlyField لعرض البريد الإلكتروني للمستخدم بدلاً من ID
     user_email = serializers.ReadOnlyField(source='user.email')
     
-    # نستخدم ReadOnlyField للوصول إلى الخاصية المحسوبة (total_points) في النموذج
-    total_points = serializers.ReadOnlyField() 
+    # التعديل: يجب تحديد المصدر صراحة كـ 'total_points' لضمان قراءة خاصية @property في النموذج
+    total_points = serializers.ReadOnlyField(source='total_points') 
     
     class Meta:
         model = UserWallet
         fields = ['user_email', 'total_points']
 
-# ----------------------------------------------------
-# 2. Serializer لعرض سجل المعاملات (Logs)
-# ----------------------------------------------------
+## ----------------------------------------------------
+## 2. Serializer لعرض سجل المعاملات (Logs)
+## ----------------------------------------------------
 
 class UserPointsLogSerializer(serializers.ModelSerializer):
     # لعرض نوع العملية بشكل مقروء (مثلاً: Earned Points بدلاً من EARN)
@@ -37,9 +37,9 @@ class UserPointsLogSerializer(serializers.ModelSerializer):
             'timestamp'
         ]
 
-# ----------------------------------------------------
-# 3. Serializer لعرض المكافآت المتاحة للاستبدال
-# ----------------------------------------------------
+## ----------------------------------------------------
+## 3. Serializer لعرض المكافآت المتاحة للاستبدال
+## ----------------------------------------------------
 
 class RewardSerializer(serializers.ModelSerializer):
     class Meta:
