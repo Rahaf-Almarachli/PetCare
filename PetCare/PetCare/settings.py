@@ -18,7 +18,7 @@ import dj_database_url  # New import
 import cloudinary
 import cloudinary_storage
 #dummy
-
+#
 
 # قم بتحميل متغيرات البيئة من ملف .env في جذر المشروع
 #load_dotenv()
