@@ -13,7 +13,7 @@ from datetime import timedelta
 from pathlib import Path
 import os
 #from dotenv import load_dotenv
-import dj_database_url  # New import
+import dj_database_url
 # 💥 إضافة Cloudinary
 import cloudinary
 import cloudinary_storage
