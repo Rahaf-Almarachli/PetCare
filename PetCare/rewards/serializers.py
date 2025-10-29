@@ -10,7 +10,7 @@ class UserWalletSerializer(serializers.ModelSerializer):
     user_email = serializers.ReadOnlyField(source='user.email')
     
     # التعديل: يجب تحديد المصدر صراحة كـ 'total_points' لضمان قراءة خاصية @property في النموذج
-    total_points = serializers.ReadOnlyField(source='total_points') 
+    total_points = serializers.IntegerField(read_only=True) 
     
     class Meta:
         model = UserWallet
