@@ -9,13 +9,19 @@ class UserWalletSerializer(serializers.ModelSerializer):
     # نستخدم ReadOnlyField لعرض البريد الإلكتروني للمستخدم بدلاً من ID
     user_email = serializers.ReadOnlyField(source='user.email')
     
-    # التعديل: يجب تحديد المصدر صراحة كـ 'total_points' لضمان قراءة خاصية @property في النموذج
-    total_points = serializers.IntegerField(read_only=True) 
+    # الحل النهائي: استخدام SerializerMethodField لضمان قراءة الخاصية المحسوبة
+    total_points = serializers.SerializerMethodField() 
     
     class Meta:
         model = UserWallet
         fields = ['user_email', 'total_points']
 
+    # الدالة الخاصة بـ SerializerMethodField
+    # تقوم باستدعاء خاصية total_points المحسوبة في نموذج UserWallet مباشرة (obj.total_points)
+    def get_total_points(self, obj):
+        # obj هو مثيل (instance) UserWallet الحالي
+        return obj.total_points
+        
 ## ----------------------------------------------------
 ## 2. Serializer لعرض سجل المعاملات (Logs)
 ## ----------------------------------------------------
