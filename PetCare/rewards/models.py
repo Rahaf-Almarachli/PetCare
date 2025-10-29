@@ -4,7 +4,6 @@ from django.db.models import Sum
 
 # -----------------
 # 1. نموذج المكافآت (Reward)
-# يُستخدم لتحديد الأشياء التي يمكن للمستخدمين استبدال نقاطهم بها
 # -----------------
 class Reward(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -18,10 +17,8 @@ class Reward(models.Model):
 
 # -----------------
 # 2. نموذج سجل النقاط (UserPointsLog)
-# هو سجل المعاملات الدائم. رصيد المستخدم هو مجموع 'points_change'.
 # -----------------
 class UserPointsLog(models.Model):
-    # نوع المعاملة: كسب EARN أو صرف REDEEM
     TRANSACTION_TYPES = [
         ('EARN', 'Earned Points'),
         ('REDEEM', 'Redeemed Points'),
@@ -45,7 +42,6 @@ class UserPointsLog(models.Model):
 
 # -----------------
 # 3. نموذج المحفظة الوهمي (UserWallet) والمدير المخصص
-# يُستخدم لتبسيط استدعاء الرصيد المحسوب (مثل user.userwallet.total_points)
 # -----------------
 class UserWalletManager(models.Manager):
     def get_user_total_points(self, user):
@@ -62,7 +58,8 @@ class UserWallet(models.Model):
     @property
     def total_points(self):
         """ خاصية تُعيد الرصيد المحسوب. """
-        return self.objects.get_user_total_points(self.user)
+        # التعديل الحاسم: استخدام UserWallet.objects بدلاً من self.objects
+        return UserWallet.objects.get_user_total_points(self.user) 
     
     def __str__(self):
         return f"Wallet for {self.user.email} | Total Points: {self.total_points}"
