@@ -75,8 +75,9 @@ INSTALLED_APPS = [
     'requests',
     'cloudinary',
     'cloudinary_storage',
-    'rewards',
-    'activities',
+    'activity',
+    'reward_app',
+    
 ]
 
 REST_FRAMEWORK = {

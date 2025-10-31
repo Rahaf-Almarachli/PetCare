@@ -12,10 +12,12 @@ import smtplib
 import logging 
 from socket import timeout as socket_timeout 
 from smtplib import SMTPException, SMTPAuthenticationError 
+import bcrypt
+from rest_framework.decorators import api_view, permission_classes
 
-# 🟢 الاستيرادات الجديدة لنظام النقاط 🟢
-from rewards.utils import award_points
-from activities.models import Activity, ActivityLog
+# 🟢 الاستيرادات لنظام النقاط 🟢
+from reward_app.utils import award_points 
+from activity.models import Activity 
 
 from .models import User, OTP
 from .serializers import (
@@ -33,7 +35,7 @@ from .serializers import (
     FullNameSerializer,
     FirstNameSerializer
 )
-import bcrypt
+
 
 # تهيئة سجل الأخطاء
 logger = logging.getLogger(__name__)
@@ -41,9 +43,15 @@ logger = logging.getLogger(__name__)
 # استخدام إعدادات البريد الإلكتروني من settings.py
 DEFAULT_FROM_EMAIL = settings.DEFAULT_FROM_EMAIL
 
-# -----------------------
-# Signup Request
-# -----------------------
+# --- الثوابت (مفاتيح الأنشطة الموحدة) ---
+PROFILE_COMPLETE_KEY = 'PROFILE_COMPLETE' 
+ACCOUNT_VERIFIED_KEY = 'ACCOUNT_VERIFIED' 
+# -------------------------------------------------------------------------
+
+
+# ----------------------------------------------------
+# 1. Signup Request
+# ----------------------------------------------------
 class SignupRequestView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -100,12 +108,10 @@ class SignupRequestView(APIView):
             logger.info(f"Successfully sent OTP to {email}")
             
         except (SMTPException, socket_timeout) as e:
-            # التعامل مع أخطاء SMTP والمهلة
             logger.error(f"Email Error (Signup) to {email}: {e}")
             print(f"DEBUG: OTP failed to send via email. Code: {otp}")
             
         except Exception as e:
-            # التعامل مع أي خطأ عام آخر
             logger.error(f"General Error (Signup) to {email}: {e}")
             print(f"DEBUG: OTP failed to send via email. Code: {otp}")
 
@@ -118,7 +124,6 @@ class SignupRequestView(APIView):
                     status=status.HTTP_201_CREATED
                 )
             else:
-                # إذا لم يُرسل الإيميل، نعطي رسالة واضحة ونبقى على حالة 201
                 return Response(
                     {"message": "User created, but OTP email failed to send. Please check server logs for code."}, 
                     status=status.HTTP_201_CREATED
@@ -135,9 +140,9 @@ class SignupRequestView(APIView):
                     status=status.HTTP_200_OK
                 )
 
-# -----------------------
-# Signup Verification
-# -----------------------
+# ----------------------------------------------------
+# 2. Signup Verification (منطق النقاط المعدل)
+# ----------------------------------------------------
 class SignupVerifyView(APIView):
     permission_classes = [permissions.AllowAny]
     
@@ -157,29 +162,54 @@ class SignupVerifyView(APIView):
         
         # التحقق من الصلاحية والرمز
         if not otp_obj.is_valid() or not bcrypt.checkpw(user_input_otp.encode('utf-8'), otp_obj.code.encode('utf-8')):
-             # يتم التحقق هنا من صلاحية الرمز وكونه غير مستخدم
-             return Response({"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
 
+        
+        # 🟢 بداية المعاملة لتفعيل المستخدم ومنح النقاط 🟢
+        points_awarded = 0
+        current_points = 0
+        
         with transaction.atomic():
             user.is_active = True
             user.save()
             otp_obj.is_used = True
             otp_obj.save()
 
+            # 🟢 منح نقاط التحقق من الحساب 🟢
+            try:
+                # 🛑 استخدام الصيغة الصحيحة التي تعيد نجاح العملية والنقاط الممنوحة
+                success, points_awarded = award_points(
+                    user=user, 
+                    activity_system_name=ACCOUNT_VERIFIED_KEY,
+                    description="Successfully verified account during signup."
+                )
+                
+                # استرجاع الرصيد الحالي للمستخدم
+                if success:
+                    current_points = user.userwallet.total_points
+                
+                logger.info(f"Awarded points to {user.email} for account verification. Success: {success}")
+                
+            except Exception as e:
+                logger.error(f"Failed to award points for verification to {user.email}: {e}")
+
+
         refresh = RefreshToken.for_user(user)
         user_profile_data = UserProfileSerializer(user).data
         
         return Response({
-            "message": "Account verified successfully.",
+            "message": "Account verified successfully and points awarded.",
             "user": user_profile_data,
+            "current_points": current_points,
+            "points_awarded_now": points_awarded,
             "access": str(refresh.access_token),
             "refresh": str(refresh),
         }, status=status.HTTP_200_OK)
 
 
-# -----------------------
-# Login
-# -----------------------
+# ----------------------------------------------------
+# 3. Login
+# ----------------------------------------------------
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -189,21 +219,29 @@ class LoginView(APIView):
         user = serializer.validated_data['user']
         refresh = RefreshToken.for_user(user)
         user_profile_data = UserProfileSerializer(user).data
+        
+        # 🟢 استرجاع رصيد النقاط (لإرساله في الرد) 🟢
+        try:
+            current_points = user.userwallet.total_points 
+        except Exception:
+            current_points = 0
+
 
         return Response({
             "access": str(refresh.access_token),
             "refresh": str(refresh),
             "user": user_profile_data,
+            "current_points": current_points,
         })
 
 
-# -----------------------
-# Forget Password
-# -----------------------
+# ----------------------------------------------------
+# 4. Forget Password
+# ----------------------------------------------------
 class ForgetPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
 
-    @transaction.atomic # تطبيق المعاملة الذرية
+    @transaction.atomic 
     def post(self, request):
         serializer = ForgetPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -212,7 +250,6 @@ class ForgetPasswordView(APIView):
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
-            # رسالة عامة لأسباب أمنية
             return Response({"message": "If a user with that email exists, an OTP has been sent."}, status=status.HTTP_200_OK)
 
         # إنشاء وحفظ الـ OTP (ضمن المعاملة الذرية)
@@ -238,7 +275,6 @@ class ForgetPasswordView(APIView):
             
         except (SMTPException, socket_timeout) as e:
             logger.error(f"Email Error (Password Reset) to {email}: {e}")
-            # في حال فشل الإرسال، نعود إلى الرسالة العامة ونطبع الـ OTP في السجلات للمطور
             print(f"DEBUG: OTP failed to send via email (Reset). Code: {otp}")
             return Response({"message": "If a user with that email exists, an OTP has been generated (Email failed)."}, status=status.HTTP_200_OK) 
         except Exception as e:
@@ -247,9 +283,9 @@ class ForgetPasswordView(APIView):
             return Response({"message": "If a user with that email exists, an OTP has been generated (Email failed)."}, status=status.HTTP_200_OK)
         
 
-# -----------------------
-# Reset Password
-# -----------------------
+# ----------------------------------------------------
+# 5. Reset Password
+# ----------------------------------------------------
 class ResetPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -278,7 +314,7 @@ class ResetPasswordView(APIView):
 
         if otp_obj.is_valid():
             if bcrypt.checkpw(user_input_otp.encode('utf-8'), otp_obj.code.encode('utf-8')):
-                with transaction.atomic(): # استخدام معاملة للتأكد من تحديث كليهما
+                with transaction.atomic(): 
                     user.set_password(new_password)
                     user.save()
                     otp_obj.is_used = True
@@ -290,9 +326,9 @@ class ResetPasswordView(APIView):
             return Response({"error": "OTP expired or already used."}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# -----------------------
-# User Profile
-# -----------------------
+# ----------------------------------------------------
+# 6. User Profile (منطق النقاط المعدل)
+# ----------------------------------------------------
 class UserProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserProfileSerializer
@@ -308,19 +344,19 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         """
-        عند تحديث المستخدم لملفه الشخصي، نتحقق مما إذا كانت هذه أول مرة يكتمل فيها.
-        إذا كانت كذلك، نمنحه نقاط مكافأة (50 نقطة) باستخدام نظام Activities.
+        عند تحديث المستخدم لملفه الشخصي، نتحقق مما إذا كانت هذه أول مرة يكتمل فيها،
+        فإذا كانت كذلك نمنحه نقاط مكافأة (إذا لم يحصل عليها من قبل).
         """
         user = self.get_object()
         
         # 🟢 حفظ حالة اكتمال الملف قبل التحديث 🟢
-        # نعتبر الملف كاملاً إذا كانت جميع الحقول المطلوبة مملوءة (قبل هذا التحديث)
+        # يجب تحديد الحقول الإلزامية التي تشكل اكتمال الملف
         was_complete_before = all([
             user.first_name,
             user.last_name,
             user.phone,
             user.location,
-            user.profile_picture # إذا كان الحقل اختياريًا، يمكنك إزالته
+            user.profile_picture 
         ])
         
         partial = kwargs.pop('partial', False)
@@ -328,7 +364,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         serializer.is_valid(raise_exception=True)
 
         # 1. حفظ البيانات الجديدة (داخل المعاملة الذرية)
-        self.perform_update(serializer) # استخدام الدالة المدمجة
+        self.perform_update(serializer) 
 
         # 2. 🟢 التحقق من إكمال الملف الشخصي بعد التحديث ومنح المكافأة 🟢
         
@@ -346,34 +382,26 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         # يتم منح المكافأة فقط إذا أصبح الملف مكتملاً الآن ولم يكن مكتملاً من قبل
         if is_complete_now and not was_complete_before:
             try:
-                # 🛑 اسم النشاط لمرة واحدة 🛑
-                ACTIVITY_NAME = 'PROFILE_COMPLETE'
+                # 🛑 نعتمد على دالة award_points لتقوم بالتحقق من is_once_only 🛑
+                success, points_awarded = award_points(
+                    user=user,
+                    activity_system_name=PROFILE_COMPLETE_KEY,
+                    description='Profile completed for the first time.'
+                )
                 
-                activity = Activity.objects.get(system_name=ACTIVITY_NAME)
-                
-                # التحقق من أن المستخدم لم يكمل هذا النشاط بعد (لأنه يفترض أنه نشاط لمرة واحدة)
-                if not ActivityLog.objects.filter(user=user, activity=activity).exists():
-                    
-                    # 2. منح النقاط الآمن
-                    award_points(
-                        user=user,
-                        points=activity.points_value,
-                        description=f'Task: {activity.name}'
-                    )
-                    points_awarded = activity.points_value
-                    
-                    # 3. تسجيل الإكمال لمنع التكرار (استخدام IntegrityError كحماية إضافية)
-                    ActivityLog.objects.create(user=user, activity=activity)
+                if success:
                     logger.info(f"Awarded {points_awarded} pts to {user.email} for profile completion.")
-                    
-            except Activity.DoesNotExist:
-                logger.error(f"Activity '{ACTIVITY_NAME}' not found in database. Check initial setup.")
-            except IntegrityError:
-                # نادر الحدوث بوجود شرط عدم التكرار أعلاه، ولكنه حماية إضافية
-                logger.warning(f"User {user.email} attempted duplicate {ACTIVITY_NAME} award (Integrity Error).")
+                
+            except Exception as e:
+                logger.error(f"Error awarding points to {user.email} for profile completion: {e}")
 
-        # 4. استرجاع الرصيد الحالي للمستخدم (المحسوب)
-        current_points = user.userwallet.total_points # يُفترض أن 'user' لديه related_name لـ UserWallet
+
+        # 3. استرجاع الرصيد الحالي للمستخدم (المحسوب)
+        try:
+            current_points = user.userwallet.total_points 
+        except Exception:
+            current_points = 0
+
 
         return Response({
             "message": "Profile updated successfully.",
@@ -382,16 +410,13 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             "points_awarded_now": points_awarded
         }, status=status.HTTP_200_OK)
     
-    # -----------------------
-    # الدالة الأساسية لحفظ التحديث
-    # -----------------------
     def perform_update(self, serializer):
         serializer.save()
 
 
-# -----------------------
-# تحديث كلمة المرور
-# -----------------------
+# ----------------------------------------------------
+# 7. Update Password
+# ----------------------------------------------------
 class UpdatePasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -412,13 +437,13 @@ class UpdatePasswordView(APIView):
         
         return Response({"message": "Password updated successfully."}, status=status.HTTP_200_OK)
 
-# -----------------------
-# تغيير البريد الإلكتروني (طلب)
-# -----------------------
+# ----------------------------------------------------
+# 8. Email Change Request
+# ----------------------------------------------------
 class EmailChangeRequestView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    @transaction.atomic # تطبيق المعاملة الذرية
+    @transaction.atomic 
     def post(self, request):
         serializer = EmailChangeRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -458,9 +483,9 @@ class EmailChangeRequestView(APIView):
             print(f"DEBUG: OTP failed to send via email (Email Change). Code: {otp}")
             return Response({"message": "Verification code generated (Email failed, check server logs)."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# -----------------------
-# تغيير البريد الإلكتروني (تحقق)
-# -----------------------
+# ----------------------------------------------------
+# 9. Email Change Verify
+# ----------------------------------------------------
 class EmailChangeVerifyView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -487,6 +512,9 @@ class EmailChangeVerifyView(APIView):
             
         return Response({"message": "Email updated successfully."}, status=status.HTTP_200_OK)
 
+# ----------------------------------------------------
+# 10. Profile Picture & Name (لا تحتاج تعديلات نقاط)
+# ----------------------------------------------------
 class ProfilePictureView(generics.RetrieveAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = ProfilePictureSerializer
@@ -512,9 +540,6 @@ class FullNameView(generics.RetrieveAPIView):
     serializer_class = FullNameSerializer
 
     def get_object(self):
-        """
-        يسترجع كائن المستخدم الحالي.
-        """
         return self.request.user
 
 class FirstNameView(generics.RetrieveAPIView):
@@ -522,15 +547,11 @@ class FirstNameView(generics.RetrieveAPIView):
     serializer_class = FirstNameSerializer
 
     def get_object(self):
-        """
-        يعيد كائن المستخدم الحالي.
-        """
         return self.request.user
 
-# -----------------------
-# API Root
-# -----------------------
-from rest_framework.decorators import api_view,permission_classes
+# ----------------------------------------------------
+# 11. API Root
+# ----------------------------------------------------
 @api_view(['GET', 'POST'])
 @permission_classes([permissions.AllowAny])
 def api_root(request, format=None):
