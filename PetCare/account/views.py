@@ -327,7 +327,7 @@ class ResetPasswordView(APIView):
 
 
 # ----------------------------------------------------
-# 6. User Profile (منطق النقاط المعدل)
+# 6. User Profile (تم التعديل لضمان النقاط الصحيحة)
 # ----------------------------------------------------
 class UserProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -350,7 +350,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         user = self.get_object()
         
         # 🟢 حفظ حالة اكتمال الملف قبل التحديث 🟢
-        # يجب تحديد الحقول الإلزامية التي تشكل اكتمال الملف
         was_complete_before = all([
             user.first_name,
             user.last_name,
@@ -365,6 +364,11 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         # 1. حفظ البيانات الجديدة (داخل المعاملة الذرية)
         self.perform_update(serializer) 
 
+        # 🛑🛑 الكود المعدل هنا 🛑🛑
+        # إعادة تحميل الكائن لضمان الحصول على القيم الجديدة من قاعدة البيانات
+        # وهذا يضمن أن التحقق is_complete_now يتم بالقيم المحدثة
+        user.refresh_from_db() 
+        
         # 2. 🟢 التحقق من إكمال الملف الشخصي بعد التحديث ومنح المكافأة 🟢
         
         # حالة اكتمال الملف الشخصي بعد التحديث
@@ -380,7 +384,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         # يتم منح المكافأة فقط إذا أصبح الملف مكتملاً الآن ولم يكن مكتملاً من قبل
         if is_complete_now and not was_complete_before:
             try:
-                # 🛑 نعتمد على دالة award_points لتقوم بالتحقق من is_once_only 🛑
                 success, points_awarded = award_points(
                     user=user,
                     activity_system_name=PROFILE_COMPLETE_KEY,
@@ -395,6 +398,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
 
         # 3. استرجاع الرصيد الحالي للمستخدم (المحسوب)
+        # هذا الآن آمن وسيحتوي على نقاط الملف إذا تم منحها بنجاح
         try:
             current_points = user.userwallet.total_points 
         except Exception:
