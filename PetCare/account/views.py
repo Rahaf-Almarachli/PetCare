@@ -355,8 +355,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             user.first_name,
             user.last_name,
             user.phone,
-            user.location,
-            user.profile_picture 
+            user.location
         ])
         
         partial = kwargs.pop('partial', False)
@@ -373,8 +372,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             user.first_name,
             user.last_name,
             user.phone,
-            user.location,
-            user.profile_picture
+            user.location
         ])
         
         points_awarded = 0
