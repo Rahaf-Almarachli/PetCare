@@ -175,6 +175,9 @@ class SignupVerifyView(APIView):
             otp_obj.is_used = True
             otp_obj.save()
 
+            # 🛑 التعديل هنا: إعادة تحميل الكائن بعد الحفظ 🛑
+            user.refresh_from_db() 
+
             # 🟢 منح نقاط التحقق من الحساب 🟢
             try:
                 # 🛑 استخدام الصيغة الصحيحة التي تعيد نجاح العملية والنقاط الممنوحة
@@ -186,6 +189,7 @@ class SignupVerifyView(APIView):
                 
                 # استرجاع الرصيد الحالي للمستخدم
                 if success:
+                    # بما أن award_points عملت، فالمحفظة موجودة ومحدثة
                     current_points = user.userwallet.total_points
                 
                 logger.info(f"Awarded points to {user.email} for account verification. Success: {success}")
@@ -217,6 +221,10 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
+        
+        # 🛑🛑 التعديل هنا: تحديث حالة الكائن من DB لضمان الرصيد الأحدث 🛑🛑
+        user.refresh_from_db() 
+        
         refresh = RefreshToken.for_user(user)
         user_profile_data = UserProfileSerializer(user).data
         
