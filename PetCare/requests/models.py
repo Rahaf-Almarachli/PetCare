@@ -1,14 +1,13 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-# Assuming the Pet model is in the 'pet' app
 from pets.models import Pet 
 
-# Get the custom User model defined in your 'account' app
+# الحصول على نموذج المستخدم المخصص
 User = get_user_model()
 
 class InteractionRequest(models.Model):
     """
-    Represents a Mating or Adoption request sent from one user to a pet owner.
+    يمثل طلب تزاوج أو تبني مُرسل من مستخدم إلى مالك حيوان أليف.
     """
     INTERACTION_CHOICES = (
         ('Mate', 'Mating Request'),
@@ -20,21 +19,21 @@ class InteractionRequest(models.Model):
         ('Rejected', 'Rejected'),
     )
 
-    # Sender (The user initiating the request)
+    # المُرسِل (من أنشأ الطلب)
     sender = models.ForeignKey(
         User, 
         on_delete=models.CASCADE, 
         related_name='sent_requests',
         verbose_name="Sender"
     )
-    # The specific Pet being requested
+    # الحيوان الأليف المطلوب
     pet = models.ForeignKey(
         Pet, 
         on_delete=models.CASCADE, 
         related_name='received_requests',
         verbose_name="Requested Pet"
     )
-    # Receiver (The Pet's owner)
+    # المُستقبِل (مالك الحيوان الأليف)
     receiver = models.ForeignKey(
         User, 
         on_delete=models.CASCADE, 
@@ -49,9 +48,8 @@ class InteractionRequest(models.Model):
     )
     message = models.TextField(verbose_name="Request Message")
     
-    # حقل لتخزين رابط URL للملف المرفق
     attached_file = models.CharField( 
-        max_length=500, # تحديد طول مناسب للرابط
+        max_length=500, 
         blank=True, 
         null=True
     )
@@ -62,7 +60,6 @@ class InteractionRequest(models.Model):
         default='Pending'
     )
     
-    # 🟢 الحقل المفقود الذي يسبب ValueError 🟢
     owner_response_message = models.TextField(
         null=True, 
         blank=True, 
@@ -78,8 +75,5 @@ class InteractionRequest(models.Model):
         verbose_name_plural = "Interaction Requests"
 
     def __str__(self):
-        return f"Request for {self.pet.pet_name} ({self.request_type}) by {self.sender.username}"
-
-# ⚠️ ملاحظة مهمة: يجب تنفيذ الأمر: 
-# python manage.py makemigrations requests
-# python manage.py migrate
+        sender_name = getattr(self.sender, 'full_name', self.sender.email)
+        return f"Request for {self.pet.pet_name} ({self.request_type}) by {sender_name}"

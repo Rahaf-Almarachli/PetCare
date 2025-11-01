@@ -1,4 +1,3 @@
-
 from rest_framework import serializers
 from .models import InteractionRequest
 from pets.models import Pet 
@@ -8,22 +7,20 @@ from django.db import transaction
 User = get_user_model()
 
 # ----------------------------------------------------
-# 1. Sender Detail Serializer (تفاصيل المرسل الكاملة)
+# 1. Sender Detail Serializer (لإظهار بيانات المرسل)
 # ----------------------------------------------------
 class SenderDetailSerializer(serializers.ModelSerializer):
     """
     Serializes sender details (Full Name, Location, Phone) for Detail views.
     """
     location = serializers.CharField(read_only=True)
-    # 💥 التعديل الحاسم: استخدام source='phone' لجلب رقم الهاتف
     phone_number = serializers.CharField(source='phone', read_only=True) 
-    # full_name سيعمل كخاصية @property في نموذج المستخدم
     full_name = serializers.CharField(read_only=True) 
     
     class Meta:
         model = User
         fields = ['id', 'full_name', 'location', 'phone_number'] 
-        read_only_fields = ['id', 'full_name', 'location', 'phone_number']
+        read_only_fields = fields
 
 # ----------------------------------------------------
 # 2. Request Create Serializer (لإنشاء الطلب)
@@ -33,7 +30,6 @@ class RequestCreateSerializer(serializers.ModelSerializer):
     Serializer مخصص لإنشاء طلب جديد.
     """
     pet_id = serializers.IntegerField(write_only=True)
-    
     attached_file = serializers.URLField(
         required=False, 
         allow_null=True, 
@@ -43,9 +39,7 @@ class RequestCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InteractionRequest
-        fields = [
-            'pet_id', 'request_type', 'message', 'attached_file'
-        ]
+        fields = ['pet_id', 'request_type', 'message', 'attached_file']
 
     def validate_pet_id(self, value):
         user = self.context['request'].user
@@ -57,6 +51,9 @@ class RequestCreateSerializer(serializers.ModelSerializer):
         if pet.owner == user:
             raise serializers.ValidationError("Cannot send a request for your own pet.")
         
+        if InteractionRequest.objects.filter(sender=user, pet=pet, status='Pending').exists():
+            raise serializers.ValidationError("You already have a pending request for this pet.")
+
         return value
 
     @transaction.atomic
@@ -65,9 +62,6 @@ class RequestCreateSerializer(serializers.ModelSerializer):
         pet = Pet.objects.get(id=pet_id)
         user = self.context['request'].user
         
-        if InteractionRequest.objects.filter(sender=user, pet=pet, status='Pending').exists():
-             raise serializers.ValidationError({"detail": "You already have a pending request for this pet."})
-
         validated_data['sender'] = user
         validated_data['receiver'] = pet.owner 
         validated_data['pet'] = pet
@@ -77,7 +71,7 @@ class RequestCreateSerializer(serializers.ModelSerializer):
         return request
 
 # ----------------------------------------------------
-# 3. Request Detail Serializer (للعرض الموجز/Inbox List)
+# 3. Request Detail Serializer (للعرض الموجز/القائمة)
 # ----------------------------------------------------
 class RequestDetailSerializer(serializers.ModelSerializer):
     """
@@ -87,9 +81,13 @@ class RequestDetailSerializer(serializers.ModelSerializer):
     sender_location = serializers.CharField(source='sender.location', read_only=True)
     request_summary_text = serializers.SerializerMethodField()
     
-
+    class Meta:
+        model = InteractionRequest
+        fields = ['id', 'sender_first_name', 'sender_location', 'request_summary_text', 'request_type']
+        read_only_fields = fields
+    
     def get_sender_first_name(self, obj):
-        full_name = obj.sender.full_name
+        full_name = getattr(obj.sender, 'full_name', '')
         if full_name:
             return full_name.split(' ')[0]
         return ""
@@ -97,22 +95,10 @@ class RequestDetailSerializer(serializers.ModelSerializer):
     def get_request_summary_text(self, obj):
         pet_name = obj.pet.pet_name
         if obj.request_type == 'Mate':
-            return f"Requesting to mate {pet_name}"
+            return f"طلب تزاوج لـ {pet_name}"
         elif obj.request_type == 'Adoption':
-            return f"Requesting to adopt {pet_name}"
+            return f"طلب تبني لـ {pet_name}"
         return ""
-
-
-    class Meta:
-        model = InteractionRequest
-        fields = [
-            'id', 
-            'sender_first_name',      
-            'sender_location',        
-            'request_summary_text',   
-            'request_type',           
-        ]
-        read_only_fields = fields
 
 # ----------------------------------------------------
 # 4. Request Full Detail Serializer (للعرض التفصيلي)
@@ -121,18 +107,21 @@ class RequestFullDetailSerializer(serializers.ModelSerializer):
     """
     Serializer يُستخدم لعرض التفاصيل الكاملة للطلب (Request Details Screen).
     """
-    # كائن sender يحتوي الآن على الاسم الكامل، الموقع، ورقم الهاتف الصحيح
     sender = SenderDetailSerializer(read_only=True)
-    
-    # الملف المرفق
-    attached_file = serializers.URLField(read_only=True) 
     
     class Meta:
         model = InteractionRequest
-        fields = [
-            'id',                 
-            'sender',             
-            'message',            
-            'attached_file',      
-        ]
+        fields = '__all__' 
         read_only_fields = fields
+
+# ----------------------------------------------------
+# 5. Request Update Serializer (لتحديث الحالة)
+# ----------------------------------------------------
+class RequestUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer يُستخدم لتحديث حالة الطلب ورسالة الرد من المالك.
+    """
+    class Meta:
+        model = InteractionRequest
+        fields = ('status', 'owner_response_message')
+        read_only_fields = ('request_type', 'message', 'attached_file')

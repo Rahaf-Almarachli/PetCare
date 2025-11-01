@@ -1,99 +1,102 @@
-from django.db import transaction
-from django.shortcuts import get_object_or_404
-import logging
-# 🛑 تم التعديل: استيراد من تطبيق activity
-from activity.models import Activity, ActivityLog
-from .models import UserWallet, RedeemLog
+from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.utils import timezone
+from datetime import timedelta
+import uuid
 
-logger = logging.getLogger(__name__)
-
-# ----------------------------------------------------
-# 1. دالة منح النقاط (award_points) - مُعَدَّلة
-# ----------------------------------------------------
-def award_points(user, activity_system_name: str, description: str = None):
+# -------------------------------------------------------------------------
+# مدير المستخدم المخصص
+# -------------------------------------------------------------------------
+class UserManager(BaseUserManager):
     """
-    يمنح نقاطًا للمستخدم بناءً على مفتاح النشاط، ويتحقق من الأنشطة المخصصة لمرة واحدة.
+    مدير مستخدم مخصص للتعامل مع إنشاء المستخدمين والمستخدمين الخارقين.
     """
-    try:
-        activity = Activity.objects.get(system_name=activity_system_name)
-    except Activity.DoesNotExist:
-        logger.error(f"Activity with system_name '{activity_system_name}' not found.")
-        # 🟢 نُعيد هنا False والقيمة 0 كنقاط
-        return False, 0
-    
-    if activity.interaction_type != 'EARN':
-        logger.warning(f"Attempted to award points for a REDEEM activity: {activity_system_name}")
-        return False, 0
+    def create_user(self, email, password=None, **extra_fields):
+        """
+        ينشئ ويحفظ مستخدمًا عاديًا بالبريد الإلكتروني وكلمة المرور المحددة.
+        """
+        if not email:
+            raise ValueError("Email is required.")
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save()
+        return user
 
-    # 🛑 منطق التحقق من الأنشطة لمرة واحدة فقط (is_once_only) 🛑
-    if activity.is_once_only:
-        if ActivityLog.objects.filter(user=user, activity=activity).exists():
-            logger.warning(f"User {user.email} already completed once-only activity: {activity_system_name}.")
-            return False, 0 # لا نمنح النقاط إذا تم إنجازها بالفعل
+    def create_superuser(self, email, password=None, **extra_fields):
+        """
+        ينشئ ويحفظ مستخدمًا خارقًا بالبريد الإلكتروني وكلمة المرور المحددة.
+        """
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
+            
+        return self.create_user(email, password, **extra_fields)
 
-    points_to_award = activity.points_value
+# -------------------------------------------------------------------------
+# نموذج المستخدم المخصص
+# -------------------------------------------------------------------------
+class User(AbstractBaseUser, PermissionsMixin):
+    """
+    نموذج مستخدم مخصص بالاسم الأول، والاسم الأخير، والبريد الإلكتروني كمُعرّف.
+    """
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    location = models.CharField(max_length=100, blank=True, null=True)
+    profile_picture = models.URLField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
     
-    with transaction.atomic():
-        # 1. إنشاء سجل النشاط (ActivityLog)
-        ActivityLog.objects.create(
-            user=user,
-            activity=activity,
-            points_awarded=points_to_award,
-            description=description
+    # تعيين المدير المخصص
+    objects = UserManager()
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['first_name', 'last_name']
+
+    def __str__(self):
+        return self.email
+    
+    @property
+    def full_name(self):
+        """
+        خاصية لحساب الاسم الكامل للمستخدم.
+        """
+        return f"{self.first_name} {self.last_name}".strip()
+
+# -------------------------------------------------------------------------
+# نموذج OTP للتحقق (تم إزالة التكرار)
+# -------------------------------------------------------------------------
+class OTP(models.Model):
+    """
+    نموذج لكلمة مرور لمرة واحدة (OTP) للتحقق من المستخدم.
+    """
+    OTP_TYPE_CHOICES = (
+        ("signup", "Signup Verification"),
+        ("reset_password", "Reset Password"),
+        ("email_change", "Email Change"),
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='otps')
+    # يجب أن يكون هذا حقل تشفير (Hashed)
+    code = models.CharField(max_length=255, editable=False) 
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+    otp_type = models.CharField(max_length=20, choices=OTP_TYPE_CHOICES, default='signup')
+
+    def is_valid(self):
+        """
+        يتحقق مما إذا كان رمز OTP صالحًا (غير مستخدم ولم تنته صلاحيته).
+        """
+        # OTP صالح لمدة 5 دقائق
+        return (
+            not self.is_used and
+            timezone.now() - self.created_at < timedelta(minutes=5)
         )
-        
-        # 2. تحديث المحفظة (UserWallet)
-        # نستخدم get_or_create لضمان وجود المحفظة دائمًا
-        wallet, created = UserWallet.objects.get_or_create(user=user)
-        wallet.total_points += points_to_award
-        wallet.save()
-        
-    logger.info(f"User {user.email} awarded {points_to_award} pts for {activity_system_name}.")
-    # 🟢 نُعيد True وقيمة النقاط الممنوحة
-    return True, points_to_award
 
-# ----------------------------------------------------
-# 2. دالة استبدال النقاط (redeem_points)
-# ----------------------------------------------------
-def redeem_points(user, reward_system_name: str, details: dict = None):
-    """
-    يخصم النقاط من المستخدم ويُنشئ سجل استبدال. (كما هي)
-    """
-    try:
-        reward = Activity.objects.get(system_name=reward_system_name)
-    except Activity.DoesNotExist:
-        return {'success': False, 'message': "Reward not found."}
-    
-    if reward.interaction_type != 'REDEEM':
-        return {'success': False, 'message': "Activity is not a redeemable reward."}
-    
-    points_cost = reward.points_value 
-    
-    try:
-        with transaction.atomic():
-            # تأمين الصف لمنع شروط السباق (Race Conditions)
-            wallet = UserWallet.objects.select_for_update().get(user=user)
-            
-            if wallet.total_points < points_cost:
-                return {'success': False, 'message': "Insufficient points balance."}
-                
-            wallet.total_points -= points_cost
-            wallet.save()
-            
-            RedeemLog.objects.create(
-                user=user,
-                reward=reward,
-                points_deducted=points_cost,
-                details=details
-            )
-
-        logger.info(f"User {user.email} redeemed {points_cost} pts for {reward_system_name}.")
-        return {
-            'success': True, 
-            'message': f"Successfully redeemed {points_cost} points for {reward.name}.",
-            'new_balance': wallet.total_points,
-            'reward_object': reward 
-        }
-        
-    except UserWallet.DoesNotExist:
-        return {'success': False, 'message': "User wallet not found."}
+    def __str__(self):
+        return f"{self.otp_type} OTP for {self.user.email}"
