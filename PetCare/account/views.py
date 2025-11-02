@@ -360,24 +360,19 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         # 🛑🛑 الكود المعدل يبدأ هنا: دالة التحقق الشامل 🛑🛑
         def is_profile_data_complete(user_obj):
             """
-            تتحقق مما إذا كانت جميع الحقول المطلوبة (first_name, last_name, phone, location, profile_picture) مكتملة.
+            تتحقق مما إذا كانت جميع الحقول المطلوبة (بما في ذلك الصورة المخزنة كـ URL نصي) مكتملة.
             """
             # الحقول النصية التي يجب أن تكون موجودة وغير فارغة
-            required_text_fields = ['first_name', 'last_name', 'phone', 'location']
+            # تم تضمين الصورة هنا على أساس أنها مخزنة كـ string (URL)
+            required_fields = ['first_name', 'last_name', 'phone', 'location', 'profile_picture']
             
-            # 1. التحقق من الحقول النصية
-            for field in required_text_fields:
+            for field in required_fields:
                 value = getattr(user_obj, field, None)
+                
+                # التحقق من أن القيمة ليست None وليست سلسلة فارغة
                 if not value or (isinstance(value, str) and value.strip() == ''):
                     return False
-            
-            # 2. التحقق من حقل الصورة (Profile Picture)
-            # يجب التأكد من وجود الحقل في النموذج قبل التحقق
-            if hasattr(user_obj, 'profile_picture'):
-                # التحقق من أن الصورة ليست فارغة (أي مرتبطة بملف)
-                if not user_obj.profile_picture or not user_obj.profile_picture.name:
-                    return False
-
+                
             # إذا مرت جميع الاختبارات
             return True
 
@@ -441,7 +436,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 # 7. Update Password
 # ----------------------------------------------------
 class UpdatePasswordView(APIView):
-# ... (باقي الفئات والوظائف كما هي) ...
     permission_classes = [permissions.IsAuthenticated]
 
     @transaction.atomic
@@ -550,20 +544,14 @@ class UpdateProfilePictureView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def put(self, request):
+        # ملاحظة: التعديلات في UserProfileView تغطي منح النقاط عند تحديث الصورة
+        # إذا تم تحديث الصورة هنا، يجب أن يُفترض أن المستخدم سيقوم بتحديث حقل آخر 
+        # لتشغيل منطق النقاط في UserProfileView أو تكرار المنطق هنا (الخيار الأول أبسط)
         serializer = ProfilePictureSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         
-        # 🟢 الإضافة: بعد تحديث الصورة، قم بتشغيل منطق التحقق من اكتمال الملف الشخصي
-        # بما أن هذا التابع هو جزء من تحديث الملف الشخصي، يجب أن يستفيد من منطق النقاط
-        user = request.user
-        
         # 1. حفظ البيانات الجديدة
         serializer.save()
-        
-        # 2. التحقق من النقاط (نحن بحاجة إلى استيراد منطق is_profile_data_complete أو نقله خارج الوظيفة)
-        # لغرض البساطة الآن، نعتمد على أن المستخدم سيقوم بتحديث حقل آخر ليتم التحقق الشامل.
-        # إذا كنت تحتاج إلى منح النقاط فوراً بعد تحميل الصورة، يجب نقل is_profile_data_complete خارج update
-        # واستدعاؤها هنا.
         
         return Response(
             {"message": "Profile picture updated successfully."}, 
