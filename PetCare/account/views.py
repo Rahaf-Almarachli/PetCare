@@ -335,7 +335,7 @@ class ResetPasswordView(APIView):
 
 
 # ----------------------------------------------------
-# 6. User Profile (تم التعديل لضمان النقاط الصحيحة)
+# 6. User Profile (مع التعديلات التشخيصية)
 # ----------------------------------------------------
 class UserProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -357,38 +357,27 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         """
         user = self.get_object()
         
-        # 🛑🛑 الكود المعدل يبدأ هنا: دالة التحقق الشامل (مع logs) 🛑🛑
+        # 🛑🛑 دالة التحقق المعدلة (مع تفاصيل الفشل في الـ return) 🛑🛑
         def is_profile_data_complete(user_obj):
-            """
-            تتحقق مما إذا كانت جميع الحقول المطلوبة (بما في ذلك الصورة المخزنة كـ URL نصي) مكتملة.
-            """
-            # الحقول النصية التي يجب أن تكون موجودة وغير فارغة
             required_fields = ['first_name', 'last_name', 'phone', 'location', 'profile_picture']
-            
-            # 🟢 أضف هذا السطر لمتابعة بداية الفحص
-            logger.info(f"--- STARTING PROFILE COMPLETENESS CHECK for User {user_obj.email} ---")
             
             for field in required_fields:
                 value = getattr(user_obj, field, None)
                 
-                # 🟢 أضف هذا السطر لتتبع قيمة كل حقل
-                # ملاحظة: إذا كان الـ URL طويلاً، سيظهر كاملاً في اللوج
-                logger.info(f"Checking field '{field}': Value is '{value}' (Type: {type(value)})")
-                
                 # التحقق من أن القيمة ليست None وليست سلسلة فارغة
                 if not value or (isinstance(value, str) and value.strip() == ''):
-                    # 🟢 أضف هذا السطر عند الفشل
-                    logger.warning(f"PROFILE INCOMPLETE: Field '{field}' failed check.")
-                    return False
-                
-            # 🟢 أضف هذا السطر عند النجاح
-            logger.info("--- PROFILE CHECK SUCCESSFUL: All required fields are complete. ---")
+                    # نُرجع اسم الحقل الفاشل بدلاً من True/False لتشخيص المشكلة
+                    return field 
+            
+            # إذا مرت جميع الاختبارات، نُرجع True
             return True
 
 
         # 🟢 حفظ حالة اكتمال الملف قبل التحديث 🟢
-        was_complete_before = is_profile_data_complete(user) # ⬅️ استخدام الدالة الجديدة
-        
+        was_complete_status_before = is_profile_data_complete(user)
+        was_complete_before = (was_complete_status_before is True) # True أو False
+
+
         partial = kwargs.pop('partial', False)
         serializer = self.get_serializer(user, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
@@ -401,10 +390,12 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         
         # 2. 🟢 التحقق من إكمال الملف الشخصي بعد التحديث ومنح المكافأة 🟢
         
-        # حالة اكتمال الملف الشخصي بعد التحديث
-        is_complete_now = is_profile_data_complete(user) # ⬅️ استخدام الدالة الجديدة
+        is_complete_status_now = is_profile_data_complete(user)
+        is_complete_now = (is_complete_status_now is True) # True أو False
         
         points_awarded = 0
+        failure_reason = None # متغير جديد لتشخيص الفشل
+
         
         # يتم منح المكافأة فقط إذا أصبح الملف مكتملاً الآن ولم يكن مكتملاً من قبل
         if is_complete_now and not was_complete_before:
@@ -414,12 +405,19 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
                     activity_system_name=PROFILE_COMPLETE_KEY,
                     description='Profile completed for the first time.'
                 )
-                
-                if success:
-                    logger.info(f"Awarded {points_awarded} pts to {user.email} for profile completion.")
-                
+                if not success:
+                    failure_reason = "Points system check failed: award_points returned success=False."
+
             except Exception as e:
-                logger.error(f"Error awarding points to {user.email} for profile completion: {e}")
+                failure_reason = f"Error awarding points: {e}"
+        
+        elif not is_complete_now:
+            # إذا لم يكتمل الآن، نُسجل الحقل الفاشل
+            failure_reason = f"Profile check failed on field: {is_complete_status_now}"
+
+        elif was_complete_before:
+            # إذا كان مكتملاً بالفعل من قبل
+            failure_reason = "Profile was already complete (Not first completion)."
 
 
         # 3. استرجاع الرصيد الحالي للمستخدم (المحسوب)
@@ -433,7 +431,9 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             "message": "Profile updated successfully.",
             "user": UserProfileSerializer(user).data,
             "current_points": current_points,
-            "points_awarded_now": points_awarded
+            "points_awarded_now": points_awarded,
+            "profile_completed_now": is_complete_now,
+            "DEBUG_FAILURE_REASON": failure_reason, # ⬅️ هذا هو متغير التشخيص الجديد
         }, status=status.HTTP_200_OK)
         
     def perform_update(self, serializer):
