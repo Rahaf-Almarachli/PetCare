@@ -335,7 +335,7 @@ class ResetPasswordView(APIView):
 
 
 # ----------------------------------------------------
-# 6. User Profile (مع التعديلات التشخيصية)
+# 6. User Profile (مع التعديلات النهائية للتحقق والتشخيص)
 # ----------------------------------------------------
 class UserProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -357,19 +357,26 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         """
         user = self.get_object()
         
-        # 🛑🛑 دالة التحقق المعدلة (مع تفاصيل الفشل في الـ return) 🛑🛑
+        # 🛑🛑 دالة التحقق المعدلة (الحل النهائي لـ URL الصورة) 🛑🛑
         def is_profile_data_complete(user_obj):
-            required_fields = ['first_name', 'last_name', 'phone', 'location', 'profile_picture']
             
-            for field in required_fields:
+            # 1. الحقول النصية العادية
+            required_text_fields = ['first_name', 'last_name', 'phone', 'location']
+            for field in required_text_fields:
                 value = getattr(user_obj, field, None)
-                
-                # التحقق من أن القيمة ليست None وليست سلسلة فارغة
                 if not value or (isinstance(value, str) and value.strip() == ''):
-                    # نُرجع اسم الحقل الفاشل بدلاً من True/False لتشخيص المشكلة
-                    return field 
+                    return field # يُرجع اسم الحقل الفاشل
+                    
+            # 2. فحص حقل الصورة (الذي يُخزّن كـ URL نصي)
             
-            # إذا مرت جميع الاختبارات، نُرجع True
+            # استرداد القيمة من قاعدة البيانات مباشرةً كصفة
+            picture_value = getattr(user_obj, 'profile_picture', None) 
+            
+            # إذا كانت القيمة غير موجودة (None) أو إذا كانت سلسلة نصية فارغة بعد إزالة المسافات
+            if not picture_value or (isinstance(picture_value, str) and picture_value.strip() == ''):
+                return 'profile_picture' 
+            
+            # إذا مرت جميع الاختبارات
             return True
 
 
