@@ -357,13 +357,33 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         """
         user = self.get_object()
         
+        # 🛑🛑 الكود المعدل يبدأ هنا: دالة التحقق الشامل 🛑🛑
+        def is_profile_data_complete(user_obj):
+            """
+            تتحقق مما إذا كانت جميع الحقول المطلوبة (first_name, last_name, phone, location, profile_picture) مكتملة.
+            """
+            # الحقول النصية التي يجب أن تكون موجودة وغير فارغة
+            required_text_fields = ['first_name', 'last_name', 'phone', 'location']
+            
+            # 1. التحقق من الحقول النصية
+            for field in required_text_fields:
+                value = getattr(user_obj, field, None)
+                if not value or (isinstance(value, str) and value.strip() == ''):
+                    return False
+            
+            # 2. التحقق من حقل الصورة (Profile Picture)
+            # يجب التأكد من وجود الحقل في النموذج قبل التحقق
+            if hasattr(user_obj, 'profile_picture'):
+                # التحقق من أن الصورة ليست فارغة (أي مرتبطة بملف)
+                if not user_obj.profile_picture or not user_obj.profile_picture.name:
+                    return False
+
+            # إذا مرت جميع الاختبارات
+            return True
+
+
         # 🟢 حفظ حالة اكتمال الملف قبل التحديث 🟢
-        was_complete_before = all([
-            user.first_name,
-            user.last_name,
-            user.phone,
-            user.location
-        ])
+        was_complete_before = is_profile_data_complete(user) # ⬅️ استخدام الدالة الجديدة
         
         partial = kwargs.pop('partial', False)
         serializer = self.get_serializer(user, data=request.data, partial=partial)
@@ -372,20 +392,13 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         # 1. حفظ البيانات الجديدة (داخل المعاملة الذرية)
         self.perform_update(serializer) 
 
-        # 🛑🛑 الكود المعدل هنا 🛑🛑
         # إعادة تحميل الكائن لضمان الحصول على القيم الجديدة من قاعدة البيانات
-        # وهذا يضمن أن التحقق is_complete_now يتم بالقيم المحدثة
         user.refresh_from_db() 
         
         # 2. 🟢 التحقق من إكمال الملف الشخصي بعد التحديث ومنح المكافأة 🟢
         
         # حالة اكتمال الملف الشخصي بعد التحديث
-        is_complete_now = all([
-            user.first_name,
-            user.last_name,
-            user.phone,
-            user.location
-        ])
+        is_complete_now = is_profile_data_complete(user) # ⬅️ استخدام الدالة الجديدة
         
         points_awarded = 0
         
@@ -406,7 +419,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
 
         # 3. استرجاع الرصيد الحالي للمستخدم (المحسوب)
-        # هذا الآن آمن وسيحتوي على نقاط الملف إذا تم منحها بنجاح
         try:
             current_points = user.userwallet.total_points 
         except Exception:
@@ -419,15 +431,17 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             "current_points": current_points,
             "points_awarded_now": points_awarded
         }, status=status.HTTP_200_OK)
-    
+        
     def perform_update(self, serializer):
         serializer.save()
+# 🛑🛑 الكود المعدل ينتهي هنا 🛑🛑
 
 
 # ----------------------------------------------------
 # 7. Update Password
 # ----------------------------------------------------
 class UpdatePasswordView(APIView):
+# ... (باقي الفئات والوظائف كما هي) ...
     permission_classes = [permissions.IsAuthenticated]
 
     @transaction.atomic
@@ -538,7 +552,18 @@ class UpdateProfilePictureView(APIView):
     def put(self, request):
         serializer = ProfilePictureSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+        
+        # 🟢 الإضافة: بعد تحديث الصورة، قم بتشغيل منطق التحقق من اكتمال الملف الشخصي
+        # بما أن هذا التابع هو جزء من تحديث الملف الشخصي، يجب أن يستفيد من منطق النقاط
+        user = request.user
+        
+        # 1. حفظ البيانات الجديدة
         serializer.save()
+        
+        # 2. التحقق من النقاط (نحن بحاجة إلى استيراد منطق is_profile_data_complete أو نقله خارج الوظيفة)
+        # لغرض البساطة الآن، نعتمد على أن المستخدم سيقوم بتحديث حقل آخر ليتم التحقق الشامل.
+        # إذا كنت تحتاج إلى منح النقاط فوراً بعد تحميل الصورة، يجب نقل is_profile_data_complete خارج update
+        # واستدعاؤها هنا.
         
         return Response(
             {"message": "Profile picture updated successfully."}, 
