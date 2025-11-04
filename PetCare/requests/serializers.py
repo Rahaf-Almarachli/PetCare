@@ -14,13 +14,18 @@ class SenderDetailSerializer(serializers.ModelSerializer):
     Serializes sender details (Full Name, Location, Phone) for Detail views.
     """
     location = serializers.CharField(read_only=True)
-    phone_number = serializers.CharField(source='phone', read_only=True) 
+    phone_number = serializers.CharField() 
     full_name = serializers.CharField(read_only=True) 
     
     class Meta:
         model = User
         fields = ['id', 'full_name', 'location', 'phone_number'] 
         read_only_fields = fields
+
+    def get_phone_number(self, obj):
+        # يضمن إرجاع قيمة رقم الهاتف (إذا كانت موجودة)، وإلا يرجع سلسلة فارغة
+        # obj هنا هو كائن المستخدم (Sender)
+        return getattr(obj, 'phone', '') or ''
 
 # ----------------------------------------------------
 # 2. Request Create Serializer (لإنشاء الطلب)
@@ -95,9 +100,9 @@ class RequestDetailSerializer(serializers.ModelSerializer):
     def get_request_summary_text(self, obj):
         pet_name = obj.pet.pet_name
         if obj.request_type == 'Mate':
-            return f"طلب تزاوج لـ {pet_name}"
+            return f"Requesting to mate {pet_name}"
         elif obj.request_type == 'Adoption':
-            return f"طلب تبني لـ {pet_name}"
+            return f"Requesting to adopt {pet_name}"
         return ""
 
 # ----------------------------------------------------
