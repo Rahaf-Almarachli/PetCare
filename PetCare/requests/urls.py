@@ -17,7 +17,7 @@ urlpatterns = [
 
     # GET: عرض تفاصيل طلب محدد (بواسطة ID)
     # مثال: /api/requests/12/detail/
-    path('<int:id>/detail/', RequestDetailView.as_view(), name='request-detail'),
+    path('<int:pk>/detail/', RequestDetailView.as_view(), name='request-detail'),
 
     # PATCH: تحديث حالة الطلب (قبول/رفض)
     # هذا هو الـ Endpoint الحاسم الذي يمنح النقاط.
