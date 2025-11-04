@@ -13,22 +13,24 @@ class SenderDetailSerializer(serializers.ModelSerializer):
     """
     Serializes sender details (Full Name, Location, Phone) for Detail views.
     """
-    location = serializers.CharField(read_only=True)
-    phone_number = serializers.CharField() 
-    full_name = serializers.CharField(read_only=True) 
+    location = serializers.CharField(source='location', read_only=True)
+    # 🟢 التصحيح 1: يجب أن يكون SerializerMethodField لاستخدام دالة get_phone_number
+    phone_number = serializers.SerializerMethodField() 
+    full_name = serializers.CharField(source='full_name', read_only=True) 
     
     class Meta:
         model = User
         fields = ['id', 'full_name', 'location', 'phone_number'] 
         read_only_fields = fields
 
+    # 🟢 التصحيح 2: هذه الدالة ستُستدعى الآن لأن الحقل هو SerializerMethodField
     def get_phone_number(self, obj):
-        # يضمن إرجاع قيمة رقم الهاتف (إذا كانت موجودة)، وإلا يرجع سلسلة فارغة
-        # obj هنا هو كائن المستخدم (Sender)
+        # يضمن إرجاع قيمة رقم الهاتف (إذا كانت موجودة في حقل 'phone' في موديل المستخدم)، وإلا يرجع سلسلة فارغة
         return getattr(obj, 'phone', '') or ''
 
 # ----------------------------------------------------
 # 2. Request Create Serializer (لإنشاء الطلب)
+# (تم الإبقاء عليه كما هو)
 # ----------------------------------------------------
 class RequestCreateSerializer(serializers.ModelSerializer):
     """
@@ -77,6 +79,7 @@ class RequestCreateSerializer(serializers.ModelSerializer):
 
 # ----------------------------------------------------
 # 3. Request Detail Serializer (للعرض الموجز/القائمة)
+# (تم الإبقاء عليه كما هو)
 # ----------------------------------------------------
 class RequestDetailSerializer(serializers.ModelSerializer):
     """
@@ -117,10 +120,12 @@ class RequestFullDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = InteractionRequest
         fields = '__all__' 
-        read_only_fields = fields
+        # 🟢 التصحيح 3: استخدام مجموعة ('__all__',) لحل مشكلة TypeError
+        read_only_fields = ('__all__',)
 
 # ----------------------------------------------------
 # 5. Request Update Serializer (لتحديث الحالة)
+# (تم الإبقاء عليه كما هو)
 # ----------------------------------------------------
 class RequestUpdateSerializer(serializers.ModelSerializer):
     """
