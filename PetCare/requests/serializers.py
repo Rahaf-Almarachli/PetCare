@@ -119,9 +119,9 @@ class RequestFullDetailSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = InteractionRequest
-        fields = '__all__' 
-        # 🟢 التصحيح 3 (تم): استخدام مجموعة ('__all__',) لحل مشكلة TypeError
-        read_only_fields = ('__all__',)
+        fields = ['id', 'sender', 'message', 'attached_file'] 
+        read_only_fields = fields
+
 
 # ----------------------------------------------------
 # 5. Request Update Serializer (لتحديث الحالة)
