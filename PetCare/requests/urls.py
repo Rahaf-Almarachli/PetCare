@@ -17,11 +17,11 @@ urlpatterns = [
 
     # GET: عرض تفاصيل طلب محدد (بواسطة ID)
     # مثال: /api/requests/12/detail/
-    path('<int:pk>/detail/', RequestDetailView.as_view(), name='request-detail'),
+    path('<int:pk>/', RequestDetailView.as_view(), name='request-detail'),
 
     # PATCH: تحديث حالة الطلب (قبول/رفض)
     # هذا هو الـ Endpoint الحاسم الذي يمنح النقاط.
     # مثال: /api/requests/12/update-status/
     #path('<int:id>/update-status/', RequestUpdateStatusView.as_view(), name='request-update-status'),
-    path('<int:pk>/update-status/', RequestUpdateStatusView.as_view(), name='request-update-status'),
+    path('<int:pk>/status/', RequestUpdateStatusView.as_view(), name='request-update-status'),
 ]
