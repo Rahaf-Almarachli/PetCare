@@ -28,8 +28,8 @@ class PetMatingDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'pet_name', 'pet_type', 'pet_color', 'pet_gender', 
             'age', 'pet_photo', 
-            'owner_name', 
-            'owner_location',
+            'owner_name',
+            'owner_location', 
             'owner_message', 
             'vaccinations', 
         ]
@@ -42,7 +42,6 @@ class MatingPostExistingPetSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = MatingPost
-        # 🟢 تعديل الحقول لضمان ظهورها في الرد إذا تم استخدام هذا Serializer للرد
         fields = ['id', 'pet_id', 'owner_message'] 
         read_only_fields = ['id'] 
         

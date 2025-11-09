@@ -11,7 +11,7 @@ from .models import MatingPost
 from .serializers import (
     PetMatingDetailSerializer, 
     MatingPostExistingPetSerializer, 
-    NewPetMatingSerializer
+    NewPetMatingSerializer 
 )
 from vaccination.models import Vaccination 
 
@@ -27,7 +27,6 @@ class MatingListView(APIView):
     def get(self, request, *args, **kwargs):
         target_pet_id = request.query_params.get('target_pet_id')
         
-        # 1. الاستعلام الأساسي: جلب الحيوانات المعروضة للتزاوج مع تحسين الأداء
         queryset = Pet.objects.filter(
             mating_post__isnull=False 
         ).select_related(
@@ -68,7 +67,6 @@ class MatingListView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        # 2. تسلسل البيانات
         serializer = PetMatingDetailSerializer(queryset, many=True, context={'request': request})
         
         response_data = {
@@ -103,14 +101,14 @@ class CreateMatingPostView(APIView):
         if serializer.is_valid():
             mating_post = serializer.save()
             
-            # 🟢 هذا الكود هو الحل لضمان عودة owner_message في الـ response 🟢
-            # يتم جلب كائن Pet مرة أخرى مع تحميل علاقة MatingPost (لأن PetMatingDetailSerializer يعرض من Pet)
+            # الحل لضمان عودة owner_message في الـ response
             try:
+                # جلب كائن Pet المرتبط مع تحميل العلاقات الضرورية للعرض
                 pet_with_post = Pet.objects.filter(
                     id=mating_post.pet.id
                 ).select_related('owner').prefetch_related(
-                    # يجب تحميل الـ MatingPost المرتبط لكي يتمكن PetMatingDetailSerializer من الوصول إلى owner_message
-                    Prefetch('mating_post', queryset=MatingPost.objects.all())
+                    Prefetch('mating_post', queryset=MatingPost.objects.all()),
+                    'vaccinations' # تأكد من تحميل اللقاحات أيضاً
                 ).first()
             except Exception as e:
                 return Response({"error": f"Database query failed after post creation: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
