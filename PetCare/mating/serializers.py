@@ -3,34 +3,24 @@ from pets.models import Pet
 from account.models import User 
 from mating.models import MatingPost 
 from django.db import transaction
-# يجب التأكد من وجود vaccination.models.Vaccination
 from vaccination.models import Vaccination 
 
 # ----------------------------------------------------
-# 🟢 مُسلسل جديد: لبيانات اللقاحات 🟢
+# Vaccination Serializer
 # ----------------------------------------------------
 class VaccinationSerializer(serializers.ModelSerializer):
-    """
-    مُسلسل لعرض تفاصيل اللقاحات.
-    """
     class Meta:
         model = Vaccination
         fields = ['vacc_name', 'vacc_date', 'vacc_certificate'] 
 
 # ----------------------------------------------------
-# 1. مُسلسل لعرض الحيوانات المتاحة للتزاوج (MatingListView)
+# Pet Mating Detail Serializer (للعرض)
 # ----------------------------------------------------
 class PetMatingDetailSerializer(serializers.ModelSerializer):
-    """
-    مُسلسل لعرض تفاصيل الحيوان المعروض للتزاوج. يتضمن اللقاحات ورسالة المالك.
-    """
     owner_name = serializers.CharField(source='owner.full_name', read_only=True)
     owner_location = serializers.CharField(source='owner.location', read_only=True)
-    # هذا الحقل هو المسؤول عن جلب الرسالة من المنشور المرتبط بالحيوان
     owner_message = serializers.CharField(source='mating_post.owner_message', read_only=True)
     age = serializers.ReadOnlyField() 
-    
-    # إضافة حقل اللقاحات 
     vaccinations = VaccinationSerializer(many=True, read_only=True) 
 
     class Meta:
@@ -38,21 +28,23 @@ class PetMatingDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'pet_name', 'pet_type', 'pet_color', 'pet_gender', 
             'age', 'pet_photo', 
-            'owner_name',      
-            'owner_location',  
-            'owner_message', # 🟢 يعود في الـ Response
+            'owner_name', 
+            'owner_location',
+            'owner_message', 
             'vaccinations', 
         ]
 
 # ----------------------------------------------------
-# 2. مُسلسل لإنشاء منشور تزاوج جديد (الحالة 1: اختيار حيوان موجود)
+# Mating Post Existing Pet Serializer (للإنشاء - حيوان موجود)
 # ----------------------------------------------------
 class MatingPostExistingPetSerializer(serializers.ModelSerializer):
     pet_id = serializers.IntegerField(write_only=True)
     
     class Meta:
         model = MatingPost
-        fields = ['pet_id', 'owner_message']
+        # 🟢 تعديل الحقول لضمان ظهورها في الرد إذا تم استخدام هذا Serializer للرد
+        fields = ['id', 'pet_id', 'owner_message'] 
+        read_only_fields = ['id'] 
         
     def create(self, validated_data):
         pet_id = validated_data.pop('pet_id')
@@ -63,7 +55,6 @@ class MatingPostExistingPetSerializer(serializers.ModelSerializer):
         except Pet.DoesNotExist:
             raise serializers.ValidationError({"pet_id": "Pet not found or does not belong to the user."})
 
-        # التحقق من عدم وجود منشور تزاوج حالي لهذا الحيوان
         if MatingPost.objects.filter(pet=pet).exists():
             raise serializers.ValidationError({"pet_id": "This pet is already posted for mating."})
             
@@ -71,7 +62,7 @@ class MatingPostExistingPetSerializer(serializers.ModelSerializer):
 
 
 # ----------------------------------------------------
-# 3. مُسلسل لإنشاء حيوان جديد وعرضه للتزاوج (الحالة 2: Add a new pet)
+# New Pet Mating Serializer (للإنشاء - حيوان جديد)
 # ----------------------------------------------------
 class NewPetMatingSerializer(serializers.Serializer):
     pet_name = serializers.CharField(max_length=100)

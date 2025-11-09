@@ -40,6 +40,7 @@ class RequestInboxListView(generics.ListAPIView):
 
 
 class CreateInteractionRequestView(generics.CreateAPIView): 
+
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = RequestCreateSerializer
 
@@ -158,7 +159,6 @@ class RequestUpdateStatusView(APIView):
             
             return Response({
                 "detail": f"Request accepted. Pet {pet.id} operation complete. {action_message}",
-                "owner_message": owner_response_message,
                 "points_awarded_to_sender": points_awarded,
                 "sender_current_points": sender_current_points
             }, status=status.HTTP_200_OK)
@@ -169,8 +169,7 @@ class RequestUpdateStatusView(APIView):
             request_obj.delete()
 
             return Response(
-                {"detail": f"Request {request_id} rejected and deleted from your inbox.",
-                 "owner_message": owner_response_message},
+                {"detail": f"Request {request_id} rejected and deleted from your inbox."},
                 status=status.HTTP_200_OK
             )
         

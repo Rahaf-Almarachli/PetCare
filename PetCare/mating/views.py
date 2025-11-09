@@ -4,9 +4,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404 
 from django.db.models import Prefetch
-from django.db import transaction # للتأكد من استخدام المعاملات
+from django.db import transaction 
 
-# الاستيرادات اللازمة (يفترض أن ملف pets.models موجود)
 from pets.models import Pet
 from .models import MatingPost
 from .serializers import (
@@ -14,7 +13,7 @@ from .serializers import (
     MatingPostExistingPetSerializer, 
     NewPetMatingSerializer
 )
-from vaccination.models import Vaccination # افتراض وجود نموذج اللقاحات
+from vaccination.models import Vaccination 
 
 # ---------------------------------------------------------------------
 
@@ -34,25 +33,22 @@ class MatingListView(APIView):
         ).select_related(
             'owner'
         ).prefetch_related(
-            Prefetch('mating_post', queryset=MatingPost.objects.all()), # جلب الـ MatingPost المرتبط
-            'vaccinations' # جلب بيانات اللقاحات بكفاءة
+            Prefetch('mating_post', queryset=MatingPost.objects.all()), 
+            'vaccinations' 
         ).order_by('-mating_post__created_at')
 
         selected_pet_name = None
         
         if target_pet_id:
             try:
-                # التحقق من ملكية target_pet للمستخدم الحالي قبل الفلترة
                 target_pet = get_object_or_404(Pet, id=target_pet_id, owner=request.user)
                 
-                # منطق تحديد الجنس المعاكس
                 required_gender = None
                 if target_pet.pet_gender == 'Male':
                     required_gender = 'Female'
                 elif target_pet.pet_gender == 'Female':
                     required_gender = 'Male'
                 
-                # تطبيق الفلترة التلقائية
                 if required_gender:
                     queryset = queryset.filter(
                         pet_gender=required_gender, 
@@ -107,19 +103,22 @@ class CreateMatingPostView(APIView):
         if serializer.is_valid():
             mating_post = serializer.save()
             
-            # 🟢 التعديل لضمان عودة owner_message في الـ response 🟢
-            # جلب كائن Pet مرة أخرى مع تحميل علاقة MatingPost (العلاقة العكسية)
-            pet_with_post = Pet.objects.filter(
-                id=mating_post.pet.id
-            ).select_related('owner').prefetch_related(
-                # هنا يجب تحميل العلاقة العكسية للمنشور (mating_post)
-                Prefetch('mating_post', queryset=MatingPost.objects.all())
-            ).first()
-            
+            # 🟢 هذا الكود هو الحل لضمان عودة owner_message في الـ response 🟢
+            # يتم جلب كائن Pet مرة أخرى مع تحميل علاقة MatingPost (لأن PetMatingDetailSerializer يعرض من Pet)
+            try:
+                pet_with_post = Pet.objects.filter(
+                    id=mating_post.pet.id
+                ).select_related('owner').prefetch_related(
+                    # يجب تحميل الـ MatingPost المرتبط لكي يتمكن PetMatingDetailSerializer من الوصول إلى owner_message
+                    Prefetch('mating_post', queryset=MatingPost.objects.all())
+                ).first()
+            except Exception as e:
+                return Response({"error": f"Database query failed after post creation: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
             if pet_with_post:
                 response_serializer = PetMatingDetailSerializer(pet_with_post) 
                 return Response(response_serializer.data, status=status.HTTP_201_CREATED)
             else:
-                return Response({"error": "Post created but pet link failed."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({"error": "Post created but pet link failed during retrieval."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
