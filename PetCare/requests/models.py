@@ -64,7 +64,7 @@ class InteractionRequest(models.Model):
         null=True, 
         blank=True, 
         verbose_name="Owner Response Message",
-        help_text="الرسالة الاختيارية من المالك عند قبول أو رفض الطلب."
+        help_text="Owner Messsage"
     )
     
     created_at = models.DateTimeField(auto_now_add=True)
