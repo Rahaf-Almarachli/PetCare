@@ -4,6 +4,7 @@ from account.models import User
 from mating.models import MatingPost 
 from django.db import transaction
 from vaccination.models import Vaccination 
+from django.core.exceptions import ObjectDoesNotExist
 
 # ----------------------------------------------------
 # Vaccination Serializer
@@ -14,14 +15,16 @@ class VaccinationSerializer(serializers.ModelSerializer):
         fields = ['vacc_name', 'vacc_date', 'vacc_certificate'] 
 
 # ----------------------------------------------------
-# Pet Mating Detail Serializer (للعرض)
+# Pet Mating Detail Serializer (للعرض) - الحل النهائي لـ owner_message
 # ----------------------------------------------------
 class PetMatingDetailSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source='owner.full_name', read_only=True)
     owner_location = serializers.CharField(source='owner.location', read_only=True)
-    owner_message = serializers.CharField(source='mating_post.owner_message', read_only=True)
     age = serializers.ReadOnlyField() 
     vaccinations = VaccinationSerializer(many=True, read_only=True) 
+    
+    # 🌟 التعديل الحاسم: استخدام SerializerMethodField لضمان قراءة الرسالة
+    owner_message = serializers.SerializerMethodField() 
 
     class Meta:
         model = Pet
@@ -33,6 +36,23 @@ class PetMatingDetailSerializer(serializers.ModelSerializer):
             'owner_message', 
             'vaccinations', 
         ]
+        
+    def get_owner_message(self, pet_obj):
+        """
+        قراءة الرسالة مباشرة من كائن MatingPost المرتبط.
+        """
+        try:
+            # افتراض أن العلاقة العكسية تسمى 'mating_post' أو 'matingpost_set'
+            return pet_obj.mating_post.owner_message
+        except ObjectDoesNotExist:
+            # إذا لم يتم تحميل الكائن عبر prefetch (كما في الـ View)، نحاول البحث المباشر
+            try:
+                 return MatingPost.objects.get(pet=pet_obj).owner_message
+            except MatingPost.DoesNotExist:
+                 return None
+        except AttributeError:
+            return None
+
 
 # ----------------------------------------------------
 # Mating Post Existing Pet Serializer (للإنشاء - حيوان موجود)

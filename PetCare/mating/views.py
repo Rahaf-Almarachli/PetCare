@@ -27,6 +27,7 @@ class MatingListView(APIView):
     def get(self, request, *args, **kwargs):
         target_pet_id = request.query_params.get('target_pet_id')
         
+        # لا زلنا نحتاج Prefetch هنا لتحميل البيانات في القائمة بكفاءة
         queryset = Pet.objects.filter(
             mating_post__isnull=False 
         ).select_related(
@@ -101,20 +102,19 @@ class CreateMatingPostView(APIView):
         if serializer.is_valid():
             mating_post = serializer.save()
             
-            # الحل لضمان عودة owner_message في الـ response
+            # 🟢 الحل النهائي: جلب كائن Pet المرتبط مع تحميل العلاقات الضرورية (لكن الاعتماد على SerializerMethodField لـ owner_message)
             try:
-                # جلب كائن Pet المرتبط مع تحميل العلاقات الضرورية للعرض
-                pet_with_post = Pet.objects.filter(
+                pet_to_display = Pet.objects.filter(
                     id=mating_post.pet.id
                 ).select_related('owner').prefetch_related(
-                    Prefetch('mating_post', queryset=MatingPost.objects.all()),
-                    'vaccinations' # تأكد من تحميل اللقاحات أيضاً
+                    Prefetch('mating_post', queryset=MatingPost.objects.all()), # ابقاء Prefetch كبديل لـ SerializerMethodField
+                    'vaccinations' 
                 ).first()
             except Exception as e:
                 return Response({"error": f"Database query failed after post creation: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            if pet_with_post:
-                response_serializer = PetMatingDetailSerializer(pet_with_post) 
+            if pet_to_display:
+                response_serializer = PetMatingDetailSerializer(pet_to_display) 
                 return Response(response_serializer.data, status=status.HTTP_201_CREATED)
             else:
                 return Response({"error": "Post created but pet link failed during retrieval."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
