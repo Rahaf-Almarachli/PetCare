@@ -29,7 +29,7 @@ class PetMatingDetailSerializer(serializers.ModelSerializer):
             'id', 'pet_name', 'pet_type', 'pet_color', 'pet_gender', 
             'age', 'pet_photo', 
             'owner_name',
-            'owner_location', 
+            'owner_location',
             'owner_message', 
             'vaccinations', 
         ]
