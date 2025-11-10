@@ -1,11 +1,13 @@
+# ---------------------------------------------------------------------
+# ملف mating/serializers.py (التعديل النهائي)
+# ---------------------------------------------------------------------
 from rest_framework import serializers
 from pets.models import Pet
 from account.models import User 
 from mating.models import MatingPost 
 from django.db import transaction
 from vaccination.models import Vaccination 
-from django.core.exceptions import ObjectDoesNotExist
-
+# لا نحتاج إلى ObjectDoesNotExist عند استخدام MatingPost.objects.get().
 # ----------------------------------------------------
 # Vaccination Serializer
 # ----------------------------------------------------
@@ -15,7 +17,7 @@ class VaccinationSerializer(serializers.ModelSerializer):
         fields = ['vacc_name', 'vacc_date', 'vacc_certificate'] 
 
 # ----------------------------------------------------
-# Pet Mating Detail Serializer (للعرض) - الحل النهائي لـ owner_message
+# Pet Mating Detail Serializer (مع الحل النهائي لـ owner_message)
 # ----------------------------------------------------
 class PetMatingDetailSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source='owner.full_name', read_only=True)
@@ -23,7 +25,7 @@ class PetMatingDetailSerializer(serializers.ModelSerializer):
     age = serializers.ReadOnlyField() 
     vaccinations = VaccinationSerializer(many=True, read_only=True) 
     
-    # 🌟 التعديل الحاسم: استخدام SerializerMethodField لضمان قراءة الرسالة
+    # 🌟 التعديل الحاسم: استخدام SerializerMethodField والبحث المباشر
     owner_message = serializers.SerializerMethodField() 
 
     class Meta:
@@ -31,31 +33,28 @@ class PetMatingDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'pet_name', 'pet_type', 'pet_color', 'pet_gender', 
             'age', 'pet_photo', 
-            'owner_name',
-            'owner_location',
+            'owner_name',      
+            'owner_location',  
             'owner_message', 
             'vaccinations', 
         ]
         
     def get_owner_message(self, pet_obj):
         """
-        قراءة الرسالة مباشرة من كائن MatingPost المرتبط.
+        قراءة الرسالة بالبحث المباشر عن MatingPost المرتبط لتجنب مشكلة null.
         """
         try:
-            # افتراض أن العلاقة العكسية تسمى 'mating_post' أو 'matingpost_set'
-            return pet_obj.mating_post.owner_message
-        except ObjectDoesNotExist:
-            # إذا لم يتم تحميل الكائن عبر prefetch (كما في الـ View)، نحاول البحث المباشر
-            try:
-                 return MatingPost.objects.get(pet=pet_obj).owner_message
-            except MatingPost.DoesNotExist:
-                 return None
-        except AttributeError:
+            # البحث المباشر عن MatingPost المرتبط بهذا الحيوان
+            mating_post = MatingPost.objects.get(pet=pet_obj)
+            return mating_post.owner_message
+        except MatingPost.DoesNotExist:
             return None
+        except Exception:
+             return None
 
 
 # ----------------------------------------------------
-# Mating Post Existing Pet Serializer (للإنشاء - حيوان موجود)
+# Mating Post Existing Pet Serializer (كما هو)
 # ----------------------------------------------------
 class MatingPostExistingPetSerializer(serializers.ModelSerializer):
     pet_id = serializers.IntegerField(write_only=True)
@@ -81,7 +80,7 @@ class MatingPostExistingPetSerializer(serializers.ModelSerializer):
 
 
 # ----------------------------------------------------
-# New Pet Mating Serializer (للإنشاء - حيوان جديد)
+# New Pet Mating Serializer (كما هو)
 # ----------------------------------------------------
 class NewPetMatingSerializer(serializers.Serializer):
     pet_name = serializers.CharField(max_length=100)
