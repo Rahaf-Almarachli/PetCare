@@ -6,13 +6,14 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 import logging
 
-# 🌟 الاستيراد الجديد لإشعارات Pushy 🌟
+# 🌟 استيراد Pushy Notification 🌟
 from notifications.utils import send_pushy_notification 
 
+# استيرادات المكافآت والأنشطة
 from reward_app.utils import award_points 
-from activity.models import Activity
+from activity.models import Activity 
 
-
+# استيرادات الموديلات والسيريالايزر
 from .models import InteractionRequest
 from pets.models import Pet 
 from adoption.models import AdoptionPost 
@@ -24,14 +25,17 @@ from .serializers import (
     RequestUpdateSerializer 
 )
 
-
-REQUEST_CREATED_KEY = 'SERVICE_REQUEST_CREATED' 
+# مفاتيح نظام المكافآت
+REQUEST_CREATED_KEY = 'SERVICE_REQUEST_CREATED' # لم يعد يستخدم في هذا الـ View
 ADOPTION_APPROVED_KEY = 'ADOPTION_APPROVED'
 MATING_APPROVED_KEY = 'MATING_APPROVED'
 
 logger = logging.getLogger(__name__)
 
 
+# ----------------------------------------------------
+# 1. قائمة صندوق الوارد
+# ----------------------------------------------------
 class RequestInboxListView(generics.ListAPIView): 
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = RequestDetailSerializer 
@@ -41,6 +45,9 @@ class RequestInboxListView(generics.ListAPIView):
         return InteractionRequest.objects.filter(receiver=user).order_by('-created_at')
 
 
+# ----------------------------------------------------
+# 2. إنشاء طلب تفاعل (تم حذف منطق النقاط)
+# ----------------------------------------------------
 class CreateInteractionRequestView(generics.CreateAPIView): 
 
     permission_classes = [permissions.IsAuthenticated]
@@ -50,38 +57,28 @@ class CreateInteractionRequestView(generics.CreateAPIView):
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        # 🌟 يتم استدعاء serializer.save() هنا، والذي يشغل الإشعار للحالة 1 (إشعار المالك)
+        # 🌟 serializer.save() سيقوم بإنشاء الطلب وإرسال إشعار للمالك 🌟
         request_instance = serializer.save() 
         
-        points_awarded = 0
-        current_points = 0
+        # ❌ تمت إزالة جميع الأكواد المتعلقة بـ award_points من هنا
         
-        try:
-            success, points_awarded = award_points(
-                user=request.user, 
-                activity_system_name=REQUEST_CREATED_KEY,
-                description=f"Interaction request created: {request_instance.id}"
-            )
-            
-            if success:
-                user_wallet = getattr(request.user, 'userwallet', None)
-                current_points = user_wallet.total_points if user_wallet else 0
-        except Exception as e:
-            logger.error(f"Failed to award points for creating request: {e}")
-
         response_serializer = RequestFullDetailSerializer(request_instance)
         
         response_data = {
             "message": "Interaction request created successfully.",
             "request_id": request_instance.id,
             "request_details": response_serializer.data,
-            "current_points": current_points,
-            "points_awarded_now": points_awarded 
+            # ❌ تم حذف حقول النقاط من الـ Response هنا
+            # "current_points": 0, 
+            # "points_awarded_now": 0
         }
         
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 
+# ----------------------------------------------------
+# 3. عرض تفاصيل الطلب
+# ----------------------------------------------------
 class RequestDetailView(generics.RetrieveAPIView): 
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = RequestFullDetailSerializer 
@@ -91,6 +88,9 @@ class RequestDetailView(generics.RetrieveAPIView):
         return InteractionRequest.objects.filter(Q(sender=user) | Q(receiver=user))
 
 
+# ----------------------------------------------------
+# 4. تحديث حالة الطلب (إرسال إشعار ومنح النقاط عند القبول)
+# ----------------------------------------------------
 class RequestUpdateStatusView(APIView): 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -120,24 +120,25 @@ class RequestUpdateStatusView(APIView):
             partial=True
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save() 
+        request_obj = serializer.save() # حفظ التغييرات
         
-        # 🌟 تخزين الحالة الجديدة قبل أي عمليات قد تؤدي إلى حذف request_obj 🌟
         pet = request_obj.pet
         action_message = ""
-        sender_id = request_obj.sender.id # المستخدم الذي أرسل الطلب
+        sender_id = request_obj.sender.id 
         
         # -----------------------------------------------------------------
-        # 1. إرسال الإشعار لمرسل الطلب (الحالة 2: قبول أو رفض)
+        # عند القبول: منح النقاط وإرسال الإشعار
         # -----------------------------------------------------------------
         if new_status == 'Accepted':
+            
+            # 1. إعداد الإشعار
             title = "تهانينا! 🎉 تم قبول طلبك."
             body = f"لقد وافق مالك {pet.pet_name} على طلبك!"
             
-            # بقية المنطق الخاص بـ Accepted...
             points_awarded = 0
             sender_current_points = 0
             
+            # 2. منطق تحديث الموديلات والجوائز
             if request_obj.request_type == 'Adoption':
                 pet.owner = request_obj.sender 
                 pet.save()
@@ -153,6 +154,7 @@ class RequestUpdateStatusView(APIView):
             else:
                 activity_key = None
 
+            # 3. منح النقاط (هذا هو المكان الصحيح للمكافأة)
             if activity_key:
                 try:
                     success, points_awarded = award_points(
@@ -166,12 +168,10 @@ class RequestUpdateStatusView(APIView):
                 except Exception as e:
                     logger.error(f"Error awarding points to {request_obj.sender.email}: {e}")
 
-            # يجب أن يتم الإشعار قبل حذف الطلب لتجنب الأخطاء
-            
-            # حذف الطلبات الأخرى المتعلقة بالحيوان بعد القبول
+            # حذف الطلبات الأخرى المتعلقة بالحيوان
             InteractionRequest.objects.filter(pet=pet).delete()
             
-            # 2. إرسال إشعار القبول عبر Pushy
+            # 4. إرسال إشعار القبول عبر Pushy
             payload = {
                 "action": "REQUEST_STATUS_UPDATE",
                 "request_id": request_obj.id,
@@ -186,6 +186,8 @@ class RequestUpdateStatusView(APIView):
                 "sender_current_points": sender_current_points
             }, status=status.HTTP_200_OK)
 
+        # -----------------------------------------------------------------
+        # عند الرفض: إرسال الإشعار وحذف الطلب
         # -----------------------------------------------------------------
         elif new_status == 'Rejected':
             
