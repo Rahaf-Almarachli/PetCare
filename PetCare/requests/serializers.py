@@ -1,23 +1,24 @@
 from rest_framework import serializers
+# تأكد من استيراد الموديلات الصحيحة حسب مكانها في مشروعك
 from .models import InteractionRequest
 from pets.models import Pet 
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
+# 🌟 الاستيراد الجديد من تطبيق notifications 🌟
+from notifications.utils import send_pushy_notification 
+
 User = get_user_model()
 
 # ----------------------------------------------------
-# 1. Sender Detail Serializer (لإظهار بيانات المرسل)
+# 1. Sender Detail Serializer
 # ----------------------------------------------------
 class SenderDetailSerializer(serializers.ModelSerializer):
     """
     Serializes sender details (Full Name, Location, Phone) for Detail views.
     """
-    # 🟢 التصحيح: تمت إزالة source='location' لتبسيط الكود وتجنب الأخطاء
     location = serializers.CharField(read_only=True) 
-    # 🟢 التصحيح 1 (تم): استخدام SerializerMethodField لضمان الحصول على رقم الهاتف
     phone_number = serializers.SerializerMethodField() 
-    # 🟢 التصحيح الأخير: تمت إزالة source='full_name' لحل خطأ AssertionError
     full_name = serializers.CharField(read_only=True) 
     
     class Meta:
@@ -26,15 +27,14 @@ class SenderDetailSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_phone_number(self, obj):
-        # يضمن إرجاع قيمة رقم الهاتف (إذا كانت موجودة في حقل 'phone' في موديل المستخدم)، وإلا يرجع سلسلة فارغة
         return getattr(obj, 'phone', '') or ''
 
 # ----------------------------------------------------
-# 2. Request Create Serializer (لإنشاء الطلب)
+# 2. Request Create Serializer (المعدل: تم إضافة الإشعار)
 # ----------------------------------------------------
 class RequestCreateSerializer(serializers.ModelSerializer):
     """
-    Serializer مخصص لإنشاء طلب جديد.
+    Serializer مخصص لإنشاء طلب جديد، ويشغل إشعار للمالك.
     """
     pet_id = serializers.IntegerField(write_only=True)
     attached_file = serializers.URLField(
@@ -73,7 +73,24 @@ class RequestCreateSerializer(serializers.ModelSerializer):
         validated_data['receiver'] = pet.owner 
         validated_data['pet'] = pet
         
+        # 1. إنشاء وحفظ كائن الطلب
         request = InteractionRequest.objects.create(**validated_data)
+
+        # 2. 🌟 إرسال الإشعار إلى مالك الحيوان (الحالة 1) 🌟
+        owner_id = pet.owner.id
+        pet_name = pet.pet_name
+        
+        title = f"لديك طلب {request.request_type} جديد!"
+        body = f"وصل طلب جديد لحيوانك {pet_name}، يرجى مراجعته."
+        
+        # بيانات مخصصة لتوجيه تطبيق Flutter
+        payload = {
+            "action": "NEW_REQUEST",
+            "request_id": request.id,
+            "pet_name": pet_name,
+        }
+        
+        send_pushy_notification(owner_id, title, body, payload)
         
         return request
 
@@ -85,7 +102,6 @@ class RequestDetailSerializer(serializers.ModelSerializer):
     Serializer يُستخدم لعرض التفاصيل الموجزة (Inbox List).
     """
     sender_first_name = serializers.SerializerMethodField()
-    # 🟢 التصحيح: استخدام source='sender.location' صحيح هنا لأنه حقل متداخل
     sender_location = serializers.CharField(source='sender.location', read_only=True)
     request_summary_text = serializers.SerializerMethodField()
     

@@ -49,6 +49,7 @@ EMAIL_TIMEOUT = 5
 SITE_DOMAIN = "https://petcare-q9j0.onrender.com"
 TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
 
+PUSHY_SECRET_KEY = '1a759a76745936483a737e84c8d735d8f10f3e40bc3ac68e38397c9169e0'
 
 # Application definition
 INSTALLED_APPS = [
@@ -77,7 +78,7 @@ INSTALLED_APPS = [
     'cloudinary_storage',
     'activity',
     'reward_app',
-    
+    'notifications',
 ]
 
 REST_FRAMEWORK = {
