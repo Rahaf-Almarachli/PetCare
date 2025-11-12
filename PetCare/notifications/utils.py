@@ -1,54 +1,80 @@
-import requests
-import json
+import requests as http_client # 🌟 تم التعديل هنا: استخدام اسم مستعار لتجنب التضارب
 from django.conf import settings
-from .models import PushToken
-from typing import List, Dict, Union
+from account.models import User
+from .models import PushToken # نموذج الـ Token
+import logging
 
-def send_pushy_notification(user_id: int, title: str, body: str, data_payload: Dict[str, Union[str, int]] = None) -> Union[Dict, None]:
-    """ترسل إشعاراً فورياً إلى جميع أجهزة المستخدم عبر Pushy.me."""
+logger = logging.getLogger(__name__)
+
+def send_pushy_notification(user_id, title, body, data={}):
+    """
+    يرسل إشعار Pushy إلى جميع رموز الأجهزة المسجلة لمستخدم معين.
+    """
     
-    if data_payload is None:
-        data_payload = {}
-        
-    secret_key = getattr(settings, 'PUSHY_SECRET_KEY', None)
+    # 1. التحقق من مفتاح API
+    secret_key = settings.PUSHY_SECRET_KEY
     if not secret_key:
-        print("PUSH NOTIFICATION ERROR: PUSHY_SECRET_KEY is not set.")
-        return None
-
-    try:
-        tokens: List[str] = list(
-            PushToken.objects.filter(user_id=user_id).values_list('token', flat=True).distinct()
-        )
-    except Exception as e:
-        print(f"PUSH NOTIFICATION ERROR: Failed to retrieve tokens for user {user_id}: {e}")
-        return None
+        logger.error("PUSHY_SECRET_KEY is not set in settings.")
+        return False
         
-    if not tokens:
-        return None 
+    # 2. الحصول على رموز الجهاز للمستخدم
+    try:
+        user = User.objects.get(id=user_id)
+        tokens = list(user.push_tokens.values_list('token', flat=True))
+    except User.DoesNotExist:
+        logger.warning(f"User with ID {user_id} not found for push notification.")
+        return False
+    except Exception as e:
+        logger.error(f"Error retrieving push tokens for user {user_id}: {e}")
+        return False
 
+    if not tokens:
+        logger.info(f"No push tokens found for user {user_id}.")
+        return False
+
+    # 3. بناء حمولة الإشعار (Payload)
+    # يمكن إضافة المزيد من الخيارات هنا حسب متطلبات Flutter
     payload = {
-        "to": tokens, 
-        "data": data_payload, 
+        "to": tokens,
+        "data": {
+            "title": title,
+            "body": body,
+            **data, # دمج البيانات المخصصة (مثل action, request_id)
+            "content_available": True # للسماح بمعالجة الإشعار في الخلفية
+        },
         "notification": {
             "title": title,
             "body": body,
-            "sound": "default",
+            "badge": 1, # تحديث رقم الشارة (اختياري)
+            "sound": "default"
         },
-        "priority": "high", 
+        "content_available": True
     }
-    
-    try:
-        response = requests.post(
-            'https://api.pushy.me/send',
-            headers={
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {secret_key}' 
-            },
-            data=json.dumps(payload)
-        )
-        response.raise_for_status()
-        return response.json()
 
-    except requests.exceptions.RequestException as e:
-        print(f"PUSH NOTIFICATION FAILURE: Error sending notification to Pushy: {e}")
-        return None
+    # 4. إرسال الطلب إلى Pushy API
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {secret_key}"
+    }
+
+    try:
+        # 🌟 استخدام http_client بدلاً من requests 🌟
+        response = http_client.post("https://api.pushy.me/send", json=payload, headers=headers, timeout=10)
+        response.raise_for_status() # رفع خطأ لأكواد الحالة 4xx أو 5xx
+        
+        # التأكد من نجاح الرد من Pushy
+        response_data = response.json()
+        if response_data.get('success', False):
+            logger.info(f"Push notification sent successfully to {len(tokens)} devices for user {user_id}.")
+            return True
+        else:
+            logger.error(f"Pushy API error for user {user_id}: {response_data.get('error')}")
+            return False
+
+    # 🌟 استخدام http_client.exceptions للتعامل مع أخطاء الاتصال 🌟
+    except http_client.exceptions.RequestException as e:
+        logger.error(f"Pushy request failed (Connection Error) for user {user_id}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during Pushy process for user {user_id}: {e}")
+        return False
