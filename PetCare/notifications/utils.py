@@ -1,9 +1,9 @@
-import requests as http_client # 🌟 تم التعديل هنا: استخدام اسم مستعار لتجنب التضارب
+import requests as pushy_http_client # 🌟 الحل النهائي: استخدام اسم فريد جداً لتجنب التضارب
 from django.conf import settings
 from account.models import User
 from .models import PushToken # نموذج الـ Token
 import logging
-####3
+
 logger = logging.getLogger(__name__)
 
 def send_pushy_notification(user_id, title, body, data={}):
@@ -58,8 +58,8 @@ def send_pushy_notification(user_id, title, body, data={}):
     }
 
     try:
-        # 🌟 استخدام http_client بدلاً من requests 🌟
-        response = http_client.post("https://api.pushy.me/send", json=payload, headers=headers, timeout=10)
+        # 🌟 استخدام pushy_http_client بدلاً من requests/http_client 🌟
+        response = pushy_http_client.post("https://api.pushy.me/send", json=payload, headers=headers, timeout=10)
         response.raise_for_status() # رفع خطأ لأكواد الحالة 4xx أو 5xx
         
         # التأكد من نجاح الرد من Pushy
@@ -71,8 +71,8 @@ def send_pushy_notification(user_id, title, body, data={}):
             logger.error(f"Pushy API error for user {user_id}: {response_data.get('error')}")
             return False
 
-    # 🌟 استخدام http_client.exceptions للتعامل مع أخطاء الاتصال 🌟
-    except http_client.exceptions.RequestException as e:
+    # 🌟 استخدام pushy_http_client.exceptions للتعامل مع أخطاء الاتصال 🌟
+    except pushy_http_client.exceptions.RequestException as e: 
         logger.error(f"Pushy request failed (Connection Error) for user {user_id}: {e}")
         return False
     except Exception as e:
