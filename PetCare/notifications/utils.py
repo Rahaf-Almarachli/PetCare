@@ -3,7 +3,7 @@ from django.conf import settings
 from account.models import User
 from .models import PushToken # نموذج الـ Token
 import logging
-
+####3
 logger = logging.getLogger(__name__)
 
 def send_pushy_notification(user_id, title, body, data={}):
