@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('requests', '0002_alter_interactionrequest_attached_file'),
+        ('interactions', '0002_alter_interactionrequest_attached_file'),
     ]
 
     operations = [
