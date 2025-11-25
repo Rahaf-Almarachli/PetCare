@@ -49,8 +49,8 @@ EMAIL_TIMEOUT = 5
 SITE_DOMAIN = "https://petcare-q9j0.onrender.com"
 TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
 
-PUSHY_SECRET_KEY = '1f227f9cbe958291ad3af728dfa4e5e99e333de7ad6a16456e638b28e2d60ea8'
-
+#PUSHY_SECRET_KEY = '1f227f9cbe958291ad3af728dfa4e5e99e333de7ad6a16456e638b28e2d60ea8'
+PUSHY_SECRET_KEY = os.environ.get('PUSHY_SECRET_KEY', 'default_or_placeholder_for_local_use')
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
