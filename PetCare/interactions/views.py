@@ -46,7 +46,7 @@ class RequestInboxListView(generics.ListAPIView):
 
 
 # ----------------------------------------------------
-# 2. إنشاء طلب تفاعل (تم حذف منطق النقاط)
+# 2. إنشاء طلب تفاعل (تم إضافة إشعار لمالك الحيوان)
 # ----------------------------------------------------
 class CreateInteractionRequestView(generics.CreateAPIView): 
 
@@ -59,6 +59,29 @@ class CreateInteractionRequestView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         # 🌟 serializer.save() سيقوم بإنشاء الطلب وإرسال إشعار للمالك 🌟
         request_instance = serializer.save() 
+        
+        # ----------------------------------------------------
+        # 🌟 إضافة إشعار "طلب جديد" إلى مالك الحيوان (Receiver) 🌟
+        # ----------------------------------------------------
+        
+        recipient_user = request_instance.receiver # مالك الحيوان الأليف
+        sender_name = request_instance.sender.full_name or request_instance.sender.username
+        pet_name = request_instance.pet.pet_name
+        request_type = request_instance.request_type
+        
+        # إعداد الإشعار باللغة الإنجليزية
+        title = f"New {request_type} Request!"
+        body = f"You have a new {request_type} request from {sender_name} for {pet_name}. Please review."
+
+        payload = {
+            "action": "NEW_REQUEST_CREATED",
+            "request_id": request_instance.id,
+            "type": request_type
+        }
+        
+        send_pushy_notification(recipient_user.id, title, body, payload)
+        
+        # ----------------------------------------------------
         
         # ❌ تمت إزالة جميع الأكواد المتعلقة بـ award_points من هنا
         
@@ -120,25 +143,20 @@ class RequestUpdateStatusView(APIView):
             partial=True
         )
         serializer.is_valid(raise_exception=True)
-        request_obj = serializer.save() # حفظ التغييرات
+        request_obj = serializer.save()
         
         pet = request_obj.pet
         action_message = ""
         sender_id = request_obj.sender.id 
-        
-        # -----------------------------------------------------------------
-        # عند القبول: منح النقاط وإرسال الإشعار
-        # -----------------------------------------------------------------
+
         if new_status == 'Accepted':
             
-            # 1. إعداد الإشعار
-            title = "تهانينا! 🎉 تم قبول طلبك."
-            body = f"لقد وافق مالك {pet.pet_name} على طلبك!"
+            title = "Congratulations, Accepted!"
+            body = f"The Owner {pet.pet_name} Accepted The Request!"
             
             points_awarded = 0
             sender_current_points = 0
-            
-            # 2. منطق تحديث الموديلات والجوائز
+
             if request_obj.request_type == 'Adoption':
                 pet.owner = request_obj.sender 
                 pet.save()
@@ -185,17 +203,11 @@ class RequestUpdateStatusView(APIView):
                 "points_awarded_to_sender": points_awarded,
                 "sender_current_points": sender_current_points
             }, status=status.HTTP_200_OK)
-
-        # -----------------------------------------------------------------
-        # عند الرفض: إرسال الإشعار وحذف الطلب
-        # -----------------------------------------------------------------
+        
         elif new_status == 'Rejected':
             
-            # 1. إعداد الإشعار بالرفض
-            title = "تم تحديث طلبك."
-            body = f"نأسف، تم رفض طلبك لـ {pet.pet_name}."
-
-            # 2. إرسال إشعار الرفض عبر Pushy
+            title = "Sorry, Rejected"
+            body = f"The Owner {pet.pet_name} Rejected The Request!"
             payload = {
                 "action": "REQUEST_STATUS_UPDATE",
                 "request_id": request_obj.id,
@@ -204,7 +216,6 @@ class RequestUpdateStatusView(APIView):
             }
             send_pushy_notification(sender_id, title, body, payload)
             
-            # 3. حذف الطلب
             request_id = request_obj.id
             request_obj.delete()
 
