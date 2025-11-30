@@ -12,12 +12,7 @@ logger = logging.getLogger(__name__)
 class CatDiagnosisView(APIView):
     """
     نقطة نهاية (Endpoint) لاستقبال صورة وتشخيص أمراض القطط باستخدام Roboflow API.
-    يجب إرسال الصورة كـ form-data تحت المفتاح 'image_file'.
     """
-    
-    # تحديد نوع parser ليتمكن من التعامل مع رفع الملفات
-    # parser_classes = (MultiPartParser, FormParser) 
-    # (يمكنك إلغاء التعليق على السطر أعلاه إذا لزم الأمر، لكن DRF يتعرف على Form Data تلقائيًا عادةً)
 
     def post(self, request, *args, **kwargs):
         # 1. التحقق من وجود الصورة في الطلب
@@ -29,7 +24,7 @@ class CatDiagnosisView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. تحويل الصورة إلى Base64 (Roboflow يفضل هذا التنسيق)
+        # 2. تحويل الصورة إلى Base64
         try:
             image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
         except Exception as e:
@@ -40,13 +35,12 @@ class CatDiagnosisView(APIView):
             )
 
         # 3. إعداد طلب Roboflow
-        # نستخدم os.environ.get في settings.py لجلب هذه القيم بأمان
         api_key = settings.ROBOFLOW_API_KEY
         model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
         api_url = settings.ROBOFLOW_API_URL
 
-        # بناء عنوان URL الكامل للنموذج
-        full_url = f"{api_url}{model_endpoint}"
+        # ****** التعديل الحاسم هنا: إضافة /predict ******
+        full_url = f"{api_url}{model_endpoint}/predict" # <-- تم التعديل
         
         # إعداد البارامترات والبيانات
         params = {'api_key': api_key}
@@ -60,15 +54,16 @@ class CatDiagnosisView(APIView):
                 json=data,
                 timeout=30 # مهلة زمنية للطلب (30 ثانية)
             )
-            # إطلاق استثناء في حال كانت حالة الاستجابة 4xx أو 5xx
+            # إذا كانت الاستجابة 405 أو 401، سيتم إطلاق استثناء هنا
             roboflow_response.raise_for_status() 
             
             roboflow_result = roboflow_response.json()
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Roboflow API Request Failed: {e}")
+            # تم تعديل الرسالة لتكون أكثر دقة الآن
             return Response(
-                {"detail": "Error communicating with the diagnosis service. Check API key and model endpoint."},
+                {"detail": "Error communicating with the diagnosis service. Please check your Roboflow API configuration and logs."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         
@@ -86,8 +81,8 @@ class CatDiagnosisView(APIView):
         diagnosis_results = [
             {
                 "disease": p.get('class'),
-                "confidence": round(p.get('confidence', 0) * 100, 2), # تحويل الثقة إلى نسبة مئوية
-                "location": f"X: {p.get('x')}, Y: {p.get('y')}" # إحداثيات موقع المرض في الصورة
+                "confidence": round(p.get('confidence', 0) * 100, 2), 
+                "location": f"X: {p.get('x')}, Y: {p.get('y')}"
             }
             for p in predictions
         ]
