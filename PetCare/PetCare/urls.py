@@ -44,8 +44,10 @@ urlpatterns = [
     path('api/',include('alerts.urls')),
     path('api/requests/',include('interactions.urls')),
     path('api/rewards/', include('reward_app.urls')),
-    path('api/notifications/',include('notifications.urls'))
-] #+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    path('api/notifications/',include('notifications.urls')),
+    path('api/diagnose/', include('diagnosis.urls')), 
+]
+#+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

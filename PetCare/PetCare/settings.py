@@ -17,9 +17,7 @@ import dj_database_url
 # 💥 إضافة Cloudinary
 import cloudinary
 import cloudinary_storage
-#dummy
-#wkjjsjszhhhulllllllllll
-#llllll
+
 
 # قم بتحميل متغيرات البيئة من ملف .en
 #load_dotenv()
@@ -79,6 +77,7 @@ INSTALLED_APPS = [
     'activity',
     'reward_app',
     'notifications',
+    'diagnosis'
 ]
 
 REST_FRAMEWORK = {
@@ -219,5 +218,10 @@ REWARD_ADOPTION_POINTS = 100
 REWARD_MATING_POINTS = 80
 REWARD_PROFILE_REQUIRED_FIELDS = ['phone','location','profile_picture']
 
+# settings.py
+import os
 
-
+# يتم جلب القيمة من متغيرات البيئة التي حددتها في Render
+ROBOFLOW_API_KEY = os.environ.get('ROBOFLOW_API_KEY', '6vr7QLlL0AJzrK6fy4vc')
+ROBOFLOW_MODEL_ENDPOINT = os.environ.get('ROBOFLOW_MODEL_ENDPOINT', 'maria-angelica-kngdu/skin-disease-of-cat/1')
+ROBOFLOW_API_URL = "https://detect.roboflow.com/"
