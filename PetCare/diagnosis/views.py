@@ -1,22 +1,24 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from django.conf import settings # لاستخدام المتغيرات من settings.py
+from django.conf import settings
 import requests
 import base64
 import json
 import logging
+from django.core.files.uploadedfile import InMemoryUploadedFile
 
 logger = logging.getLogger(__name__)
 
 class CatDiagnosisView(APIView):
     """
     نقطة نهاية (Endpoint) لاستقبال صورة وتشخيص أمراض القطط باستخدام Roboflow API.
+    يجب إرسال الصورة كـ form-data تحت المفتاح 'image_file'.
     """
 
     def post(self, request, *args, **kwargs):
         # 1. التحقق من وجود الصورة في الطلب
-        image_file = request.FILES.get('image_file')
+        image_file: InMemoryUploadedFile = request.FILES.get('image_file')
         
         if not image_file:
             return Response(
@@ -26,6 +28,7 @@ class CatDiagnosisView(APIView):
 
         # 2. تحويل الصورة إلى Base64
         try:
+            # يجب قراءة المحتوى ثم تشفيره
             image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
         except Exception as e:
             logger.error(f"Error reading and encoding image: {e}")
@@ -39,29 +42,30 @@ class CatDiagnosisView(APIView):
         model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
         api_url = settings.ROBOFLOW_API_URL
 
-        # ****** التعديل الحاسم هنا: إضافة /predict ******
-        full_url = f"{api_url}{model_endpoint}/predict" # <-- تم التعديل
+        # بناء عنوان URL الكامل للنموذج مع إضافة /predict
+        full_url = f"{api_url}{model_endpoint}/predict" 
         
-        # إعداد البارامترات والبيانات
+        # إعداد البارامترات (API Key يرسل هنا)
         params = {'api_key': api_key}
-        data = {"image": image_base64}
         
         # 4. إرسال الطلب إلى Roboflow
         try:
             roboflow_response = requests.post(
                 full_url, 
                 params=params, 
-                json=data,
-                timeout=30 # مهلة زمنية للطلب (30 ثانية)
+                # التغيير الحاسم: إرسال Base64 كـ Raw Data
+                data=image_base64, 
+                # تحديد نوع المحتوى على أنه نص (مهم عند إرسال Base64 الخام)
+                headers={'Content-Type': 'application/x-www-form-urlencoded'}, 
+                timeout=30 # مهلة زمنية للطلب
             )
-            # إذا كانت الاستجابة 405 أو 401، سيتم إطلاق استثناء هنا
-            roboflow_response.raise_for_status() 
+            
+            roboflow_response.raise_for_status() # يطلق استثناء إذا كانت الحالة 4xx أو 5xx
             
             roboflow_result = roboflow_response.json()
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Roboflow API Request Failed: {e}")
-            # تم تعديل الرسالة لتكون أكثر دقة الآن
             return Response(
                 {"detail": "Error communicating with the diagnosis service. Please check your Roboflow API configuration and logs."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
@@ -81,7 +85,7 @@ class CatDiagnosisView(APIView):
         diagnosis_results = [
             {
                 "disease": p.get('class'),
-                "confidence": round(p.get('confidence', 0) * 100, 2), 
+                "confidence": round(p.get('confidence', 0) * 100, 2), # تحويل الثقة إلى نسبة مئوية
                 "location": f"X: {p.get('x')}, Y: {p.get('y')}"
             }
             for p in predictions
