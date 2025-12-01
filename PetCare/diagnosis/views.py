@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 class CatDiagnosisView(APIView):
     """
     نقطة نهاية (Endpoint) لاستقبال صورة وتشخيص أمراض القطط باستخدام Roboflow SDK.
-    يجب أن تكون مكتبة 'roboflow' مثبتة في البيئة.
     """
 
     def post(self, request, *args, **kwargs):
@@ -29,9 +28,8 @@ class CatDiagnosisView(APIView):
         api_key = settings.ROBOFLOW_API_KEY
         model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
         
-        # فصل معرّف المشروع ورقم الإصدار (مثال: 'maria-angelica-kngdu/skin-disease-of-cat' و '1')
         try:
-            # افتراض أن التنسيق هو 'project_name/version'
+            # فصل معرّف المشروع ورقم الإصدار (مثال: 'project_id/1')
             project_id, version_id = model_endpoint.rsplit('/', 1) 
         except ValueError:
              return Response(
@@ -39,26 +37,23 @@ class CatDiagnosisView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
-        # 3. حفظ الملف المؤقت للاستخدام من قبل SDK
-        # يجب استخدام مسار ملف مؤقت لأن SDK لا تتعامل بشكل جيد مع InMemoryUploadedFile مباشرة
         temp_file_path = None
         try:
+            # 3. حفظ الملف المؤقت للاستخدام من قبل SDK
             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
-                # كتابة محتوى الصورة إلى الملف المؤقت
                 tmp_file.write(image_file.read())
                 temp_file_path = tmp_file.name
 
-            # 4. المصادقة والتحميل باستخدام SDK
+            # 4. المصادقة والتحميل باستخدام SDK (التصحيح هنا)
             rf = Roboflow(api_key=api_key)
             
-            # يجب تحديد الـ Workspace بناءً على معرّف المشروع
-            workspace = rf.workspace 
-            project = workspace.projects().get(project_id) 
+            # ****** الكود المصحح ******
+            workspace = rf.workspace() # استدعاء الـ workspace كدالة
+            project = workspace.project(project_id) # استدعاء المشروع مباشرة
+            
             model = project.version(int(version_id)).model
 
             # 5. إجراء الاستدلال (Inference)
-            # استخدام مسار الملف المؤقت
             roboflow_result = model.predict(temp_file_path, confidence=40).json()
 
         except Exception as e:
@@ -68,7 +63,7 @@ class CatDiagnosisView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         finally:
-            # 6. حذف الملف المؤقت (مهم جداً للنظام)
+            # 6. حذف الملف المؤقت
             if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
