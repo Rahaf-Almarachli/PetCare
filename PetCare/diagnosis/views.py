@@ -37,21 +37,20 @@ class CatDiagnosisView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # 3. إعداد طلب Roboflow: استخدام هيدر Authorization
+        # 3. إعداد طلب Roboflow: استخدام هيدر Authorization وحذف /predict
         api_key = settings.ROBOFLOW_API_KEY
         model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
         api_url = settings.ROBOFLOW_API_URL
 
-        # الرابط الكامل: /predict ضروري
-        full_url = f"{api_url}{model_endpoint}/predict" 
+        # بناء عنوان URL الكامل للنموذج (بدون /predict) <--- التعديل الحاسم هنا
+        full_url = f"{api_url}{model_endpoint}" 
         
         # البيانات: نغلف Base64 فقط داخل كائن JSON
         data = {"image": image_base64} 
         
-        # ******* التعديل الحاسم: استخدام الهيدر Authorization *******
+        # استخدام الهيدر Authorization (Bearer Token)
         headers = {
             'Content-Type': 'application/json',
-            # إرسال المفتاح السري كـ Bearer Token
             'Authorization': f'Bearer {api_key}' 
         }
         
@@ -60,17 +59,16 @@ class CatDiagnosisView(APIView):
             roboflow_response = requests.post(
                 full_url, 
                 json=data, 
-                headers=headers, # <--- إرسال الهيدرات الجديدة
+                headers=headers, # <--- إرسال الهيدرات
                 timeout=30 
             )
             
-            roboflow_response.raise_for_status() # يطلق استثناء إذا كانت الحالة 4xx أو 5xx
+            roboflow_response.raise_for_status()
             
             roboflow_result = roboflow_response.json()
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Roboflow API Request Failed: {e}")
-            # إذا فشل الاتصال، فسنرجع هذا الخطأ (503)
             return Response(
                 {"detail": "Error communicating with the diagnosis service. Please check your Roboflow API configuration and logs."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
