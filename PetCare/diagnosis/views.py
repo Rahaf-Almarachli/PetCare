@@ -2,79 +2,79 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
-import requests
-import base64
-import json
 import logging
+import os
+from roboflow import Roboflow # المكتبة الرسمية
+import tempfile 
 from django.core.files.uploadedfile import InMemoryUploadedFile
 
 logger = logging.getLogger(__name__)
 
 class CatDiagnosisView(APIView):
     """
-    نقطة نهاية (Endpoint) تعود إلى التنسيق القياسي:
-    API Key في Query Params و Base64 في JSON Body مع /predict.
+    نقطة نهاية (Endpoint) لاستقبال صورة وتشخيص أمراض القطط باستخدام Roboflow SDK.
+    يجب أن تكون مكتبة 'roboflow' مثبتة في البيئة.
     """
 
     def post(self, request, *args, **kwargs):
-        # 1. التحقق من وجود الصورة في الطلب
+        # 1. التحقق من وجود الصورة
         image_file: InMemoryUploadedFile = request.FILES.get('image_file')
-        
         if not image_file:
             return Response(
-                {"detail": "Image file is missing. Please send the image under the key 'image_file'."},
+                {"detail": "Image file is missing..."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. تحويل الصورة إلى Base64
+        # 2. إعداد مفاتيح Roboflow
+        api_key = settings.ROBOFLOW_API_KEY
+        model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
+        
+        # فصل معرّف المشروع ورقم الإصدار (مثال: 'maria-angelica-kngdu/skin-disease-of-cat' و '1')
         try:
-            image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
-        except Exception as e:
-            logger.error(f"Error reading and encoding image: {e}")
-            return Response(
-                {"detail": "Failed to process image file."},
+            # افتراض أن التنسيق هو 'project_name/version'
+            project_id, version_id = model_endpoint.rsplit('/', 1) 
+        except ValueError:
+             return Response(
+                {"detail": "ROBOFLOW_MODEL_ENDPOINT format is incorrect. Expected: project_id/version_id"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # 3. إعداد طلب Roboflow: التنسيق القياسي
-        api_key = settings.ROBOFLOW_API_KEY
-        model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
-        api_url = settings.ROBOFLOW_API_URL
 
-        # الرابط الكامل: نعود لاستخدام /predict
-        full_url = f"{api_url}{model_endpoint}/predict" 
-        
-        # المصادقة: API Key في Query Parameters
-        params = {'api_key': api_key} 
-        
-        # البيانات: نغلف Base64 فقط داخل كائن JSON
-        data = {"image": image_base64} 
-        
-        # 4. إرسال الطلب إلى Roboflow
+        # 3. حفظ الملف المؤقت للاستخدام من قبل SDK
+        # يجب استخدام مسار ملف مؤقت لأن SDK لا تتعامل بشكل جيد مع InMemoryUploadedFile مباشرة
+        temp_file_path = None
         try:
-            roboflow_response = requests.post(
-                full_url, 
-                params=params,  # <--- المفتاح في Params
-                json=data,      # <--- الصورة في JSON Body
-                timeout=30 
-            )
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
+                # كتابة محتوى الصورة إلى الملف المؤقت
+                tmp_file.write(image_file.read())
+                temp_file_path = tmp_file.name
+
+            # 4. المصادقة والتحميل باستخدام SDK
+            rf = Roboflow(api_key=api_key)
             
-            roboflow_response.raise_for_status() 
-            
-            roboflow_result = roboflow_response.json()
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Roboflow API Request Failed: {e}")
-            # إذا فشل الاتصال، فسنرجع هذا الخطأ (503)
+            # يجب تحديد الـ Workspace بناءً على معرّف المشروع
+            workspace = rf.workspace 
+            project = workspace.projects().get(project_id) 
+            model = project.version(int(version_id)).model
+
+            # 5. إجراء الاستدلال (Inference)
+            # استخدام مسار الملف المؤقت
+            roboflow_result = model.predict(temp_file_path, confidence=40).json()
+
+        except Exception as e:
+            logger.error(f"Roboflow SDK Inference Failed: {e}")
             return Response(
-                {"detail": "Error communicating with the diagnosis service. Please check your Roboflow API configuration and logs."},
+                {"detail": f"Roboflow SDK Inference Failed. Check project ID/Version: {e}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
-        
-        # 5. معالجة النتائج وإرجاعها إلى العميل
+        finally:
+            # 6. حذف الملف المؤقت (مهم جداً للنظام)
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+
+        # 7. معالجة النتائج وإرجاعها
         predictions = roboflow_result.get('predictions', [])
         
-        # ... (باقي معالجة النتائج) ...
         diagnosis_results = [
             {
                 "disease": p.get('class'),
@@ -85,7 +85,7 @@ class CatDiagnosisView(APIView):
         ]
 
         return Response({
-            "message": "Diagnosis completed successfully.",
+            "message": "Diagnosis completed successfully (via SDK).",
             "predictions": diagnosis_results,
             "raw_response_id": roboflow_result.get('image', {}).get('id')
         }, status=status.HTTP_200_OK)
