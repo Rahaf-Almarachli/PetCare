@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class CatDiagnosisView(APIView):
     """
     نقطة نهاية (Endpoint) لاستقبال صورة وتشخيص أمراض القطط باستخدام Roboflow API.
-    يجب إرسال الصورة كـ form-data تحت المفتاح 'image_file'.
+    يتم إرسال المفتاح السري والصورة (Base64) داخل جسم JSON.
     """
 
     def post(self, request, *args, **kwargs):
@@ -28,7 +28,7 @@ class CatDiagnosisView(APIView):
 
         # 2. تحويل الصورة إلى Base64
         try:
-            # يجب قراءة المحتوى ثم تشفيره
+            # قراءة المحتوى ثم تشفيره
             image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
         except Exception as e:
             logger.error(f"Error reading and encoding image: {e}")
@@ -37,27 +37,26 @@ class CatDiagnosisView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # 3. إعداد طلب Roboflow
+        # 3. إعداد طلب Roboflow: دمج المفتاح والصورة
         api_key = settings.ROBOFLOW_API_KEY
         model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
         api_url = settings.ROBOFLOW_API_URL
 
-        # بناء عنوان URL الكامل للنموذج مع إضافة /predict
+        # بناء عنوان URL الكامل للنموذج (مع إضافة /predict)
         full_url = f"{api_url}{model_endpoint}/predict" 
         
-        # إعداد البارامترات (API Key يرسل هنا)
-        params = {'api_key': api_key}
+        # البيانات: نغلف Base64 والمفتاح داخل كائن JSON
+        data = {
+            "image": image_base64,
+            "api_key": api_key  # <--- المفتاح الآن في جسم JSON
+        } 
         
         # 4. إرسال الطلب إلى Roboflow
         try:
             roboflow_response = requests.post(
                 full_url, 
-                params=params, 
-                # التغيير الحاسم: إرسال Base64 كـ Raw Data
-                data=image_base64, 
-                # تحديد نوع المحتوى على أنه نص (مهم عند إرسال Base64 الخام)
-                headers={'Content-Type': 'application/x-www-form-urlencoded'}, 
-                timeout=30 # مهلة زمنية للطلب
+                json=data, # <-- إرسال كل شيء كـ JSON Body
+                timeout=30 
             )
             
             roboflow_response.raise_for_status() # يطلق استثناء إذا كانت الحالة 4xx أو 5xx
@@ -66,6 +65,7 @@ class CatDiagnosisView(APIView):
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Roboflow API Request Failed: {e}")
+            # إذا فشل الاتصال، فسنرجع هذا الخطأ (503)
             return Response(
                 {"detail": "Error communicating with the diagnosis service. Please check your Roboflow API configuration and logs."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
