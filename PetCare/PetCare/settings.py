@@ -222,6 +222,7 @@ REWARD_PROFILE_REQUIRED_FIELDS = ['phone','location','profile_picture']
 import os
 
 # يتم جلب القيمة من متغيرات البيئة التي حددتها في Render
-ROBOFLOW_API_KEY = os.environ.get('ROBOFLOW_API_KEY', '6vr7QLlL0AJzrK6fy4vc')
-ROBOFLOW_MODEL_ENDPOINT = os.environ.get('ROBOFLOW_MODEL_ENDPOINT', 'maria-angelica-kngdu/skin-disease-of-cat/1')
+ROBOFLOW_API_KEY = os.environ.get('ROBOFLOW_API_KEY')
+ROBOFLOW_MODEL_ENDPOINT = os.environ.get('ROBOFLOW_MODEL_ENDPOINT')
 ROBOFLOW_API_URL = "https://detect.roboflow.com/"
+

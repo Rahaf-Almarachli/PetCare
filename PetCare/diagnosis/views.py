@@ -43,8 +43,7 @@ class CatDiagnosisView(APIView):
         api_url = settings.ROBOFLOW_API_URL
 
         # بناء عنوان URL الكامل للنموذج (بدون /predict) <--- التعديل الحاسم هنا
-        full_url = f"{api_url}{model_endpoint}" 
-        
+        full_url = f"{api_url}{model_endpoint}/predict"
         # البيانات: نغلف Base64 فقط داخل كائن JSON
         data = {"image": image_base64} 
         
@@ -68,7 +67,8 @@ class CatDiagnosisView(APIView):
             roboflow_result = roboflow_response.json()
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Roboflow API Request Failed: {e}")
+            #logger.error(f"Roboflow API Request Failed: {e}")
+            logger.error(f"ROB0FLOW URL USED: {full_url}")
             return Response(
                 {"detail": "Error communicating with the diagnosis service. Please check your Roboflow API configuration and logs."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
@@ -99,3 +99,4 @@ class CatDiagnosisView(APIView):
             "predictions": diagnosis_results,
             "raw_response_id": roboflow_result.get('image', {}).get('id')
         }, status=status.HTTP_200_OK)
+    
