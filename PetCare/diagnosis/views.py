@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class CatDiagnosisView(APIView):
     """
     نقطة نهاية (Endpoint) لاستقبال صورة وتشخيص أمراض القطط باستخدام Roboflow API.
-    يتم إرسال المفتاح السري والصورة (Base64) داخل جسم JSON.
+    يستخدم طريقة المصادقة عبر Bearer Token في Headers.
     """
 
     def post(self, request, *args, **kwargs):
@@ -37,25 +37,30 @@ class CatDiagnosisView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # 3. إعداد طلب Roboflow: دمج المفتاح والصورة
+        # 3. إعداد طلب Roboflow: استخدام هيدر Authorization
         api_key = settings.ROBOFLOW_API_KEY
         model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
         api_url = settings.ROBOFLOW_API_URL
 
-        # بناء عنوان URL الكامل للنموذج (مع إضافة /predict)
+        # الرابط الكامل: /predict ضروري
         full_url = f"{api_url}{model_endpoint}/predict" 
         
-        # البيانات: نغلف Base64 والمفتاح داخل كائن JSON
-        data = {
-            "image": image_base64,
-            "api_key": api_key  # <--- المفتاح الآن في جسم JSON
-        } 
+        # البيانات: نغلف Base64 فقط داخل كائن JSON
+        data = {"image": image_base64} 
+        
+        # ******* التعديل الحاسم: استخدام الهيدر Authorization *******
+        headers = {
+            'Content-Type': 'application/json',
+            # إرسال المفتاح السري كـ Bearer Token
+            'Authorization': f'Bearer {api_key}' 
+        }
         
         # 4. إرسال الطلب إلى Roboflow
         try:
             roboflow_response = requests.post(
                 full_url, 
-                json=data, # <-- إرسال كل شيء كـ JSON Body
+                json=data, 
+                headers=headers, # <--- إرسال الهيدرات الجديدة
                 timeout=30 
             )
             
@@ -85,7 +90,7 @@ class CatDiagnosisView(APIView):
         diagnosis_results = [
             {
                 "disease": p.get('class'),
-                "confidence": round(p.get('confidence', 0) * 100, 2), # تحويل الثقة إلى نسبة مئوية
+                "confidence": round(p.get('confidence', 0) * 100, 2),
                 "location": f"X: {p.get('x')}, Y: {p.get('y')}"
             }
             for p in predictions
