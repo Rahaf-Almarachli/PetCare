@@ -12,8 +12,7 @@ logger = logging.getLogger(__name__)
 
 class CatDiagnosisView(APIView):
     """
-    نقطة نهاية (Endpoint) لاستقبال صورة وتشخيص أمراض القطط باستخدام Roboflow SDK.
-    يتم تحديد الـ Workspace بشكل صريح لحل مشكلة 'project not available'.
+    العودة إلى الاكتشاف التلقائي لـ Workspace (rf.workspace()) ومحاولة إيجاد المشروع.
     """
 
     def post(self, request, *args, **kwargs):
@@ -25,14 +24,14 @@ class CatDiagnosisView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. إعداد مفاتيح Roboflow وفصل معرّفات المشروع والـ Workspace
+        # 2. إعداد مفاتيح Roboflow وفصل معرّفات المشروع والإصدار
         api_key = settings.ROBOFLOW_API_KEY
-        model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
+        model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT # القيمة: maria-angelica-kngdu/skin-disease-of-cat/1
         
         try:
-            # فصل معرّف المشروع ورقم الإصدار (مثال: 'maria-angelica-kngdu/skin-disease-of-cat' و '1')
+            # project_path سيكون 'maria-angelica-kngdu/skin-disease-of-cat'
             project_path, version_id = model_endpoint.rsplit('/', 1)
-            # نستخرج اسم مساحة العمل (Workspace) واسم المشروع (Slug)
+            # project_slug سيكون 'skin-disease-of-cat'
             workspace_name, project_slug = project_path.split('/', 1) 
         except ValueError:
              return Response(
@@ -47,11 +46,14 @@ class CatDiagnosisView(APIView):
                 tmp_file.write(image_file.read())
                 temp_file_path = tmp_file.name
 
-            # 4. المصادقة والتحميل باستخدام SDK (التصحيح النهائي)
+            # 4. المصادقة والتحميل باستخدام SDK (التصحيح الحاسم)
             rf = Roboflow(api_key=api_key)
             
-            # تحديد مساحة العمل باستخدام اسمها الصحيح المستخرج من الـ Endpoint
-            workspace = rf.workspace(workspace_name) 
+            # العودة إلى اكتشاف الـ Workspace الافتراضية المرتبطة بالمفتاح
+            workspace = rf.workspace() 
+            
+            # محاولة البحث عن المشروع في الـ Workspace الافتراضية
+            # قد تحتاجين فقط لتمرير project_slug (اسم المشروع) وليس المسار الكامل
             project = workspace.project(project_slug) 
             
             model = project.version(int(version_id)).model
@@ -62,7 +64,7 @@ class CatDiagnosisView(APIView):
         except Exception as e:
             logger.error(f"Roboflow SDK Inference Failed: {e}")
             return Response(
-                {"detail": f"Roboflow SDK Inference Failed. Check project ID/Version: {e}"},
+                {"detail": f"Roboflow SDK Inference Failed. Check project ID/Version, Workspace permissions, or API Key: {e}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         finally:
@@ -73,12 +75,6 @@ class CatDiagnosisView(APIView):
         # 7. معالجة النتائج وإرجاعها
         predictions = roboflow_result.get('predictions', [])
         
-        if not predictions:
-             return Response({
-                "message": "No specific diseases were detected in the image with high confidence.",
-                "predictions": []
-            }, status=status.HTTP_200_OK)
-
         diagnosis_results = [
             {
                 "disease": p.get('class'),
