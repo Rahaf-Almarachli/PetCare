@@ -4,15 +4,18 @@ from rest_framework import status
 from django.conf import settings
 import logging
 import os
-from roboflow import Roboflow # المكتبة الرسمية
 import tempfile 
 from django.core.files.uploadedfile import InMemoryUploadedFile
+
+# المكتبة الجديدة: inference_sdk (يجب التأكد من تثبيتها في بيئة Render)
+from inference_sdk import InferenceHTTPClient
 
 logger = logging.getLogger(__name__)
 
 class CatDiagnosisView(APIView):
     """
-    نقطة نهاية تستخدم Roboflow SDK مع التسلسل الهرمي الصحيح (Workspace -> Project -> Version).
+    نقطة نهاية تستخدم مكتبة inference-sdk (وهي الحل الأحدث والأكثر موثوقية)
+    لتجاوز أخطاء صلاحيات Workspace.
     """
 
     def post(self, request, *args, **kwargs):
@@ -24,66 +27,66 @@ class CatDiagnosisView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. إعداد مفاتيح Roboflow وفصل معرّفات المشروع والإصدار
-        api_key = settings.ROBOFLOW_API_KEY
-        model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT 
+        # 2. إعداد العميل (Client)
+        # القيمة التي أرسلتِها: api_key="6vr7QLlL0AJZRrK6fy4vc"
+        # القيمة التي أرسلتِها: api_url="https://serverless.roboflow.com"
         
+        # نستخدم متغيرات Render البيئية
         try:
-            # project_path هو 'maria-angelica-kngdu/skin-disease-of-cat'
-            project_path, version_id = model_endpoint.rsplit('/', 1)
-            # استخراج اسم مساحة العمل (maria-angelica-kngdu) واسم المشروع (skin-disease-of-cat)
-            workspace_name, project_slug = project_path.split('/', 1) 
-        except ValueError:
-             return Response(
-                {"detail": "ROBOFLOW_MODEL_ENDPOINT format is incorrect. Expected: workspace_name/project_name/version_id"},
+            client = InferenceHTTPClient(
+                api_url=settings.ROBOFLOW_INFERENCE_URL, # سنضيف هذا المتغير الجديد
+                api_key=settings.ROBOFLOW_API_KEY # مفتاحكِ السري
+            )
+            model_id = settings.ROBOFLOW_MODEL_ID # سنستخدم "skin-disease-of-cat/1" مباشرة
+            
+        except AttributeError as e:
+            logger.error(f"Missing Roboflow setting: {e}")
+            return Response(
+                {"detail": "Configuration error: Missing Roboflow settings in environment variables."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
 
         temp_file_path = None
         roboflow_result = None 
         
         try:
-            # 3. حفظ الملف المؤقت
+            # 3. حفظ الملف المؤقت (ضروري لـ CLIENT.infer)
             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
                 tmp_file.write(image_file.read())
                 temp_file_path = tmp_file.name
 
-            # 4. المصادقة والتحميل باستخدام SDK (التسلسل الهرمي الصحيح)
-            rf = Roboflow(api_key=api_key)
-            
-            # التحميل عن طريق اسم مساحة العمل (كما كانت المشكلة السابقة)، 
-            # ولكن لا يوجد خيار آخر في الـ SDK الجديدة. 
-            workspace = rf.workspace(workspace_name) 
-            project = workspace.project(project_slug) 
-            
-            # التحميل إلى النموذج
-            model = project.version(int(version_id)).model 
-
-            # 5. إجراء الاستدلال (Inference)
-            roboflow_result = model.predict(temp_file_path, confidence=40).json()
+            # 4. إجراء الاستدلال (Inference) باستخدام المكتبة الجديدة
+            # تمرير مسار الملف المحلي و Model ID
+            roboflow_result = client.infer(
+                temp_file_path, 
+                model_id=model_id,
+                confidence=40
+            )
 
         except Exception as e:
-            # إذا فشلت صلاحيات الـ Workspace (404)، سيعود الخطأ هنا
-            logger.error(f"Roboflow SDK Inference Failed: {e}")
+            logger.error(f"Roboflow Inference Failed (inference-sdk): {e}")
             return Response(
-                {"detail": f"Roboflow SDK Inference Failed. Check project/version/permissions: {e}"},
+                {"detail": f"Inference Failed. Check API Key or Model ID: {e}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         finally:
-            # 6. حذف الملف المؤقت
+            # 5. حذف الملف المؤقت (مهم جداً)
             if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
-        # 7. معالجة النتائج وإرجاعها (بما في ذلك الأبعاد الأصلية)
+        # 6. معالجة النتائج وإرجاعها 
         
-        image_dims = roboflow_result.get('image', {}) if roboflow_result else {}
-        predictions = roboflow_result.get('predictions', []) if roboflow_result else []
+        # النتائج من InferenceHTTPClient تكون في شكل كائن (object)، نحتاج لتحويله إلى ديكت (dict)
+        roboflow_result_dict = roboflow_result.dict()
+        
+        image_dims = roboflow_result_dict.get('image', {})
+        predictions = roboflow_result_dict.get('predictions', [])
         
         
         base_response = {
             "original_width": image_dims.get('width'), 
             "original_height": image_dims.get('height'),
-            "raw_response_id": image_dims.get('id')
         }
 
         if not predictions:
@@ -111,7 +114,7 @@ class CatDiagnosisView(APIView):
 
 
         return Response({
-            "message": "Diagnosis completed successfully (via SDK).",
+            "message": "Diagnosis completed successfully (via inference-sdk).",
             "predictions": diagnosis_results,
             **base_response
         }, status=status.HTTP_200_OK)
