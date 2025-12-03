@@ -23,4 +23,4 @@ django-cloudinary-storage
 django-environ
 dotenv # ضروري لقراءة المتغيرات من ملف .env
 roboflow
-inference-sdk
+inference==0.9.15

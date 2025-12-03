@@ -7,19 +7,18 @@ import os
 import tempfile 
 from django.core.files.uploadedfile import InMemoryUploadedFile
 
-# المكتبة الجديدة: inference_sdk (يجب التأكد من تثبيتها في بيئة Render)
-from inference_sdk import InferenceHTTPClient
+# الاستيراد من المكتبة القديمة (inference) التي تعمل بنفس المنطق
+from inference.http.base_client import InferenceHTTPClient
 
 logger = logging.getLogger(__name__)
 
 class CatDiagnosisView(APIView):
     """
-    نقطة نهاية تستخدم مكتبة inference-sdk (وهي الحل الأحدث والأكثر موثوقية)
-    لتجاوز أخطاء صلاحيات Workspace.
+    نقطة نهاية تستخدم مكتبة inference القديمة الموثوقة (لتجاوز أخطاء البناء).
     """
 
     def post(self, request, *args, **kwargs):
-        # 1. التحقق من وجود الصورة
+        # 1. التحقق من وجود الصورة (كما كان سابقاً)
         image_file: InMemoryUploadedFile = request.FILES.get('image_file')
         if not image_file:
             return Response(
@@ -27,17 +26,13 @@ class CatDiagnosisView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. إعداد العميل (Client)
-        # القيمة التي أرسلتِها: api_key="6vr7QLlL0AJZRrK6fy4vc"
-        # القيمة التي أرسلتِها: api_url="https://serverless.roboflow.com"
-        
-        # نستخدم متغيرات Render البيئية
+        # 2. إعداد العميل (Client) باستخدام المتغيرات الصحيحة من Render
         try:
             client = InferenceHTTPClient(
-                api_url=settings.ROBOFLOW_INFERENCE_URL, # سنضيف هذا المتغير الجديد
-                api_key=settings.ROBOFLOW_API_KEY # مفتاحكِ السري
+                api_url=settings.ROBOFLOW_INFERENCE_URL, # https://serverless.roboflow.com
+                api_key=settings.ROBOFLOW_API_KEY # مفتاحك الخاص (6vr7Q...)
             )
-            model_id = settings.ROBOFLOW_MODEL_ID # سنستخدم "skin-disease-of-cat/1" مباشرة
+            model_id = settings.ROBOFLOW_MODEL_ID # skin-disease-of-cat/1
             
         except AttributeError as e:
             logger.error(f"Missing Roboflow setting: {e}")
@@ -51,13 +46,13 @@ class CatDiagnosisView(APIView):
         roboflow_result = None 
         
         try:
-            # 3. حفظ الملف المؤقت (ضروري لـ CLIENT.infer)
+            # 3. حفظ الملف المؤقت
             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
                 tmp_file.write(image_file.read())
                 temp_file_path = tmp_file.name
 
-            # 4. إجراء الاستدلال (Inference) باستخدام المكتبة الجديدة
-            # تمرير مسار الملف المحلي و Model ID
+            # 4. إجراء الاستدلال (Inference)
+            # هذه الدالة تتطلب مسار الملف و Model ID
             roboflow_result = client.infer(
                 temp_file_path, 
                 model_id=model_id,
@@ -65,21 +60,28 @@ class CatDiagnosisView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Roboflow Inference Failed (inference-sdk): {e}")
+            logger.error(f"Roboflow Inference Failed (inference library): {e}")
             return Response(
                 {"detail": f"Inference Failed. Check API Key or Model ID: {e}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         finally:
-            # 5. حذف الملف المؤقت (مهم جداً)
+            # 5. حذف الملف المؤقت
             if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
-        # 6. معالجة النتائج وإرجاعها 
+        # 6. معالجة النتائج وإرجاعها (تحويل كائن النتيجة إلى قاموس)
         
         # النتائج من InferenceHTTPClient تكون في شكل كائن (object)، نحتاج لتحويله إلى ديكت (dict)
-        roboflow_result_dict = roboflow_result.dict()
-        
+        # Note: Depending on the exact version, the result might need .to_json() or .dict()
+        try:
+             roboflow_result_dict = roboflow_result.dict()
+        except AttributeError:
+             # محاولة التحويل عبر JSON إذا لم تكن .dict() متاحة
+             import json
+             roboflow_result_dict = json.loads(roboflow_result.json())
+
+
         image_dims = roboflow_result_dict.get('image', {})
         predictions = roboflow_result_dict.get('predictions', [])
         
@@ -114,7 +116,7 @@ class CatDiagnosisView(APIView):
 
 
         return Response({
-            "message": "Diagnosis completed successfully (via inference-sdk).",
+            "message": "Diagnosis completed successfully (via inference library).",
             "predictions": diagnosis_results,
             **base_response
         }, status=status.HTTP_200_OK)
