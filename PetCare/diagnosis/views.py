@@ -4,7 +4,7 @@ from rest_framework import status
 from django.conf import settings
 import logging
 import os
-from roboflow import Roboflow
+from roboflow import Roboflow # المكتبة الرسمية
 import tempfile 
 from django.core.files.uploadedfile import InMemoryUploadedFile
 
@@ -12,8 +12,7 @@ logger = logging.getLogger(__name__)
 
 class CatDiagnosisView(APIView):
     """
-    نقطة نهاية (Endpoint) تستخدم Roboflow SDK للتشخيص.
-    تُرجع الأبعاد الأصلية للصورة (original_width/height) لمساعدة تطبيق Flutter في رسم الإطارات.
+    نقطة نهاية تستخدم Roboflow SDK مع محاولة تحميل النموذج مباشرة (لتجاوز أخطاء صلاحيات Workspace).
     """
 
     def post(self, request, *args, **kwargs):
@@ -21,19 +20,21 @@ class CatDiagnosisView(APIView):
         image_file: InMemoryUploadedFile = request.FILES.get('image_file')
         if not image_file:
             return Response(
-                {"detail": "Image file is missing. Please send the image under the key 'image_file'."},
+                {"detail": "Image file is missing..."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # 2. إعداد مفاتيح Roboflow وفصل معرّفات المشروع والإصدار
         api_key = settings.ROBOFLOW_API_KEY
-        model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
+        # model_endpoint هو (workspace_name/project_slug/version_id)
+        model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT 
         
         try:
-            # مثال: 'maria-angelica-kngdu/skin-disease-of-cat/1'
+            # project_path سيكون 'maria-angelica-kngdu/skin-disease-of-cat'
             project_path, version_id = model_endpoint.rsplit('/', 1)
-            # استخراج اسم مساحة العمل (Workspace) واسم المشروع (Slug)
-            workspace_name, project_slug = project_path.split('/', 1) 
+            # التأكد من أن project_path يحتوي على اسم المشروع كاملاً لـ SDK
+            model_id = f"{project_path}/{version_id}" # مثال: "maria-angelica-kngdu/skin-disease-of-cat/1"
+            
         except ValueError:
              return Response(
                 {"detail": "ROBOFLOW_MODEL_ENDPOINT format is incorrect. Expected: workspace_name/project_name/version_id"},
@@ -49,14 +50,12 @@ class CatDiagnosisView(APIView):
                 tmp_file.write(image_file.read())
                 temp_file_path = tmp_file.name
 
-            # 4. المصادقة والتحميل باستخدام SDK (التصحيحات)
+            # 4. المصادقة والتحميل باستخدام SDK (التعديل الحاسم: تحميل النموذج مباشرة)
             rf = Roboflow(api_key=api_key)
             
-            # تحديد مساحة العمل باستخدام اسمها الصحيح
-            workspace = rf.workspace(workspace_name) 
-            project = workspace.project(project_slug) 
-            
-            model = project.version(int(version_id)).model
+            # محاولة تحميل النموذج مباشرة باستخدام معرّف المشروع الكامل (model_id)
+            # هذا يتجاوز الحاجة لتعريف Workspace و Project بشكل منفصل.
+            model = rf.model(model_id) 
 
             # 5. إجراء الاستدلال (Inference)
             roboflow_result = model.predict(temp_file_path, confidence=40).json()
@@ -97,7 +96,6 @@ class CatDiagnosisView(APIView):
             {
                 "disease": p.get('class'),
                 "confidence": round(p.get('confidence', 0) * 100, 2),
-                # إرجاع الإحداثيات اللازمة لرسم الإطار
                 "location_details": { 
                     "x": p.get('x'),
                     "y": p.get('y'),
