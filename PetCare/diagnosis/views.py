@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class CatDiagnosisView(APIView):
     """
-    نقطة نهاية تستخدم Roboflow SDK مع محاولة تحميل النموذج مباشرة (لتجاوز أخطاء صلاحيات Workspace).
+    نقطة نهاية تستخدم Roboflow SDK مع التسلسل الهرمي الصحيح (Workspace -> Project -> Version).
     """
 
     def post(self, request, *args, **kwargs):
@@ -26,15 +26,13 @@ class CatDiagnosisView(APIView):
 
         # 2. إعداد مفاتيح Roboflow وفصل معرّفات المشروع والإصدار
         api_key = settings.ROBOFLOW_API_KEY
-        # model_endpoint هو (workspace_name/project_slug/version_id)
         model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT 
         
         try:
-            # project_path سيكون 'maria-angelica-kngdu/skin-disease-of-cat'
+            # project_path هو 'maria-angelica-kngdu/skin-disease-of-cat'
             project_path, version_id = model_endpoint.rsplit('/', 1)
-            # التأكد من أن project_path يحتوي على اسم المشروع كاملاً لـ SDK
-            model_id = f"{project_path}/{version_id}" # مثال: "maria-angelica-kngdu/skin-disease-of-cat/1"
-            
+            # استخراج اسم مساحة العمل (maria-angelica-kngdu) واسم المشروع (skin-disease-of-cat)
+            workspace_name, project_slug = project_path.split('/', 1) 
         except ValueError:
              return Response(
                 {"detail": "ROBOFLOW_MODEL_ENDPOINT format is incorrect. Expected: workspace_name/project_name/version_id"},
@@ -45,29 +43,34 @@ class CatDiagnosisView(APIView):
         roboflow_result = None 
         
         try:
-            # 3. حفظ الملف المؤقت للاستخدام من قبل SDK
+            # 3. حفظ الملف المؤقت
             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
                 tmp_file.write(image_file.read())
                 temp_file_path = tmp_file.name
 
-            # 4. المصادقة والتحميل باستخدام SDK (التعديل الحاسم: تحميل النموذج مباشرة)
+            # 4. المصادقة والتحميل باستخدام SDK (التسلسل الهرمي الصحيح)
             rf = Roboflow(api_key=api_key)
             
-            # محاولة تحميل النموذج مباشرة باستخدام معرّف المشروع الكامل (model_id)
-            # هذا يتجاوز الحاجة لتعريف Workspace و Project بشكل منفصل.
-            model = rf.model(model_id) 
+            # التحميل عن طريق اسم مساحة العمل (كما كانت المشكلة السابقة)، 
+            # ولكن لا يوجد خيار آخر في الـ SDK الجديدة. 
+            workspace = rf.workspace(workspace_name) 
+            project = workspace.project(project_slug) 
+            
+            # التحميل إلى النموذج
+            model = project.version(int(version_id)).model 
 
             # 5. إجراء الاستدلال (Inference)
             roboflow_result = model.predict(temp_file_path, confidence=40).json()
 
         except Exception as e:
+            # إذا فشلت صلاحيات الـ Workspace (404)، سيعود الخطأ هنا
             logger.error(f"Roboflow SDK Inference Failed: {e}")
             return Response(
                 {"detail": f"Roboflow SDK Inference Failed. Check project/version/permissions: {e}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         finally:
-            # 6. حذف الملف المؤقت (مهم جداً)
+            # 6. حذف الملف المؤقت
             if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
