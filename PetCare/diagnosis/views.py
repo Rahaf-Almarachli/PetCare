@@ -2,19 +2,21 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
-from django.core.files.uploadedfile import InMemoryUploadedFile
 import logging
-import requests  # المكتبة المطلوبة لإرسال طلبات HTTP
-import json
+import os
+from roboflow import Roboflow # المكتبة الرسمية
+import tempfile 
+from django.core.files.uploadedfile import InMemoryUploadedFile
 
 logger = logging.getLogger(__name__)
 
 class CatDiagnosisView(APIView):
     """
-    نقطة نهاية تستخدم طلب HTTP خام (Raw Request) مباشرة إلى Roboflow لتجنب أخطاء المكتبات.
+    العودة إلى الاكتشاف التلقائي لـ Workspace (rf.workspace()) ومحاولة إيجاد المشروع.
     """
 
     def post(self, request, *args, **kwargs):
+        # 1. التحقق من وجود الصورة
         image_file: InMemoryUploadedFile = request.FILES.get('image_file')
         if not image_file:
             return Response(
@@ -22,88 +24,68 @@ class CatDiagnosisView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # 2. إعداد مفاتيح Roboflow وفصل معرّفات المشروع والإصدار
+        api_key = settings.ROBOFLOW_API_KEY
+        model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT # القيمة: maria-angelica-kngdu/skin-disease-of-cat/1
+        
         try:
-            # 1. إعداد المتغيرات من Render
-            api_key = settings.ROBOFLOW_API_KEY
-            model_id = settings.ROBOFLOW_MODEL_ID # skin-disease-of-cat/1
-            
-            # بناء نقطة النهاية (Endpoint URL) مباشرة مع المفتاح
-            api_url = f"{settings.ROBOFLOW_INFERENCE_URL}/{model_id}?api_key={api_key}"
-            
-        except AttributeError as e:
-            logger.error(f"Configuration error: Missing Roboflow setting: {e}")
-            return Response(
-                {"detail": "Configuration error: Missing Roboflow settings in environment variables."},
+            # project_path سيكون 'maria-angelica-kngdu/skin-disease-of-cat'
+            project_path, version_id = model_endpoint.rsplit('/', 1)
+            # project_slug سيكون 'skin-disease-of-cat'
+            workspace_name, project_slug = project_path.split('/', 1) 
+        except ValueError:
+             return Response(
+                {"detail": "ROBOFLOW_MODEL_ENDPOINT format is incorrect. Expected: workspace_name/project_name/version_id"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        
+        temp_file_path = None
         try:
-            # 2. إرسال الصورة كطلب POST
-            image_file.seek(0) # إعادة ضبط مؤشر الملف
+            # 3. حفظ الملف المؤقت للاستخدام من قبل SDK
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
+                tmp_file.write(image_file.read())
+                temp_file_path = tmp_file.name
+
+            # 4. المصادقة والتحميل باستخدام SDK (التصحيح الحاسم)
+            rf = Roboflow(api_key=api_key)
             
-            # إرسال الطلب مباشرة إلى Roboflow API
-            response = requests.post(
-                api_url, 
-                data=image_file.read(),
-                # هذا هو نوع المحتوى المطلوب لإرسال بيانات الصورة الثنائية
-                headers={"Content-Type": "application/x-www-form-urlencoded"} 
-            )
+            # العودة إلى اكتشاف الـ Workspace الافتراضية المرتبطة بالمفتاح
+            workspace = rf.workspace() 
             
-            # 3. التحقق من حالة الاستجابة
-            response.raise_for_status() 
-            roboflow_result_dict = response.json()
+            # محاولة البحث عن المشروع في الـ Workspace الافتراضية
+            # قد تحتاجين فقط لتمرير project_slug (اسم المشروع) وليس المسار الكامل
+            project = workspace.project(project_slug) 
             
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"Roboflow HTTP Error: {e.response.status_code}, Response: {e.response.text}")
-            return Response(
-                {"detail": f"Roboflow Inference Failed (HTTP). Status: {e.response.status_code}. Details: {e.response.text}"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
+            model = project.version(int(version_id)).model
+
+            # 5. إجراء الاستدلال (Inference)
+            roboflow_result = model.predict(temp_file_path, confidence=40).json()
+
         except Exception as e:
-            logger.error(f"Inference General Error: {e}")
+            logger.error(f"Roboflow SDK Inference Failed: {e}")
             return Response(
-                {"detail": f"General Inference Failed: {e}"},
+                {"detail": f"Roboflow SDK Inference Failed. Check project ID/Version, Workspace permissions, or API Key: {e}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
+        finally:
+            # 6. حذف الملف المؤقت (مهم جداً)
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
 
-
-        # 4. معالجة النتائج وإرجاعها (مع الإحداثيات الأربعة المطلوبة)
-        image_dims = roboflow_result_dict.get('image', {})
-        predictions = roboflow_result_dict.get('predictions', [])
+        # 7. معالجة النتائج وإرجاعها
+        predictions = roboflow_result.get('predictions', [])
         
-        base_response = {
-            "original_width": image_dims.get('width'), 
-            "original_height": image_dims.get('height'),
-            "raw_response_id": image_dims.get('id')
-        }
-
-        if not predictions:
-             return Response({
-                "message": "No specific diseases were detected in the image with high confidence.",
-                "predictions": [],
-                **base_response
-            }, status=status.HTTP_200_OK)
-
-
-        # تحليل النتائج لإرسال إحداثيات الإطار الكامل (X, Y, Width, Height)
         diagnosis_results = [
             {
                 "disease": p.get('class'),
                 "confidence": round(p.get('confidence', 0) * 100, 2),
-                "location_details": { 
-                    "x": p.get('x'),
-                    "y": p.get('y'),
-                    "width": p.get('width'),
-                    "height": p.get('height'),
-                }
+                "location": f"X: {p.get('x')}, Y: {p.get('y')}"
             }
             for p in predictions
         ]
 
-
         return Response({
-            "message": "Diagnosis completed successfully (via direct HTTP).",
+            "message": "Diagnosis completed successfully (via SDK).",
             "predictions": diagnosis_results,
-            **base_response
+            "raw_response_id": roboflow_result.get('image', {}).get('id')
         }, status=status.HTTP_200_OK)
