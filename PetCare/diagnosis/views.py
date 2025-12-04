@@ -4,7 +4,7 @@ from rest_framework import status
 from django.conf import settings
 import logging
 import os
-from roboflow import Roboflow # المكتبة الرسمية
+from roboflow import Roboflow # المكتبة الرسمية التي يجب التأكد من تثبيتها في requirements.txt
 import tempfile 
 from django.core.files.uploadedfile import InMemoryUploadedFile
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class CatDiagnosisView(APIView):
     """
-    العودة إلى الاكتشاف التلقائي لـ Workspace (rf.workspace()) ومحاولة إيجاد المشروع.
+    نقطة نهاية تستخدم Roboflow SDK (المكتبة الرسمية) للتشخيص، مع معالجة الإحداثيات لـ Flutter.
     """
 
     def post(self, request, *args, **kwargs):
@@ -25,40 +25,51 @@ class CatDiagnosisView(APIView):
             )
 
         # 2. إعداد مفاتيح Roboflow وفصل معرّفات المشروع والإصدار
-        api_key = settings.ROBOFLOW_API_KEY
-        model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT # القيمة: maria-angelica-kngdu/skin-disease-of-cat/1
-        
         try:
-            # project_path سيكون 'maria-angelica-kngdu/skin-disease-of-cat'
+            api_key = settings.ROBOFLOW_API_KEY
+            # يجب تعيين هذا المتغير في Render كـ 'maria-angelica-krgdu/skin-disease-of-cat/1'
+            model_endpoint = settings.ROBOFLOW_MODEL_ENDPOINT
+        except AttributeError as e:
+             logger.error(f"Configuration error: Missing Roboflow setting: {e}")
+             return Response(
+                 {"detail": "Configuration error: Missing ROBOFLOW_API_KEY or ROBOFLOW_MODEL_ENDPOINT in environment variables."},
+                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+             )
+        
+        # تحليل مسار النموذج
+        try:
+            # project_path سيكون 'maria-angelica-krgdu/skin-disease-of-cat'
             project_path, version_id = model_endpoint.rsplit('/', 1)
             # project_slug سيكون 'skin-disease-of-cat'
             workspace_name, project_slug = project_path.split('/', 1) 
         except ValueError:
              return Response(
-                {"detail": "ROBOFLOW_MODEL_ENDPOINT format is incorrect. Expected: workspace_name/project_name/version_id"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+                 {"detail": "ROBOFLOW_MODEL_ENDPOINT format is incorrect. Expected: workspace_name/project_name/version_id"},
+                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+             )
 
         temp_file_path = None
+        roboflow_result = None 
+        
         try:
             # 3. حفظ الملف المؤقت للاستخدام من قبل SDK
             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
+                # التأكد من إعادة ضبط المؤشر وقراءة المحتوى
+                image_file.seek(0)
                 tmp_file.write(image_file.read())
                 temp_file_path = tmp_file.name
 
             # 4. المصادقة والتحميل باستخدام SDK (التصحيح الحاسم)
             rf = Roboflow(api_key=api_key)
             
-            # العودة إلى اكتشاف الـ Workspace الافتراضية المرتبطة بالمفتاح
-            workspace = rf.workspace() 
-            
-            # محاولة البحث عن المشروع في الـ Workspace الافتراضية
-            # قد تحتاجين فقط لتمرير project_slug (اسم المشروع) وليس المسار الكامل
+            # العثور على الـ Workspace والمشروع والنموذج
+            # نفترض أن المفتاح مرتبط بـ workspace_name
+            workspace = rf.workspace(workspace_name) 
             project = workspace.project(project_slug) 
-            
             model = project.version(int(version_id)).model
 
             # 5. إجراء الاستدلال (Inference)
+            # نستخدم .json() للحصول على قاموس Python مباشرة
             roboflow_result = model.predict(temp_file_path, confidence=40).json()
 
         except Exception as e:
@@ -72,20 +83,42 @@ class CatDiagnosisView(APIView):
             if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
-        # 7. معالجة النتائج وإرجاعها
+        # 7. معالجة النتائج وإرجاعها (الهيكل المطلوب لـ Flutter)
         predictions = roboflow_result.get('predictions', [])
+        image_dims = roboflow_result.get('image', {})
         
+        base_response = {
+            "original_width": image_dims.get('width'), 
+            "original_height": image_dims.get('height'),
+            "raw_response_id": image_dims.get('id')
+        }
+
+        if not predictions:
+             return Response({
+                "message": "No specific diseases were detected in the image with high confidence.",
+                "predictions": [],
+                **base_response
+            }, status=status.HTTP_200_OK)
+
+
+        # تحليل النتائج لإرسال إحداثيات الإطار الكامل (X, Y, Width, Height)
         diagnosis_results = [
             {
                 "disease": p.get('class'),
                 "confidence": round(p.get('confidence', 0) * 100, 2),
-                "location": f"X: {p.get('x')}, Y: {p.get('y')}"
+                "location_details": { 
+                    # نمرر الإحداثيات الأربعة اللازمة للرسم في Flutter
+                    "x": p.get('x'),
+                    "y": p.get('y'),
+                    "width": p.get('width'),
+                    "height": p.get('height'),
+                }
             }
             for p in predictions
         ]
 
         return Response({
-            "message": "Diagnosis completed successfully (via SDK).",
+            "message": "Diagnosis completed successfully (via Roboflow SDK).",
             "predictions": diagnosis_results,
-            "raw_response_id": roboflow_result.get('image', {}).get('id')
+            **base_response
         }, status=status.HTTP_200_OK)
