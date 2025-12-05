@@ -21,5 +21,7 @@ Pillow
 cloudinary
 django-cloudinary-storage
 django-environ
-dotenv # ضروري لقراءة المتغيرات من ملف .env
+dotenv
 roboflow
+scikit-learn
+numpy
