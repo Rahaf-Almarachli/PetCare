@@ -8,35 +8,24 @@ from roboflow import Roboflow
 import tempfile
 from django.core.files.uploadedfile import InMemoryUploadedFile
 import numpy as np
-from .apps import DiagnosisConfig
 import json
+import pandas as pd # يتم استخدامه لتجهيز البيانات لتغذية النموذج
 
-# ====================================================================
-# قائمة الأعراض الرسمية (المستخلصة من features.pkl)
-# هذه القائمة ضرورية لربط اسم العرض (المُرسل من Flutter) بفهرسه (Index) في النموذج.
-# يجب أن يكون طول هذه القائمة 75 عنصراً.
-# ====================================================================
-
-SYMPTOMS_LIST = [
-    "Fever", "Nasal Discharge", "Loss of appetite", "Weight Loss", "Lameness", "Breathing Difficulty", "Swollen Lymph nodes", 
-    "Lethargy", "Depression", "Coughing", "Diarrhea", "Seizures", "Vomiting", "Eating less than usual", "Excessive Salivation", 
-    "Redness around Eye area", "Severe Dehydration", "Pain", "Discomfort", "Sepsis", "Tender abdomen", 
-    "Increased drinking and urination", "Bloated Stomach", "Yellow gums", "Constipation", "Paralysis", "Wrinkled forehead", 
-    "Continuously erect and stiff ears", "Grinning appearance", "Stiff and hard tail", "Stiffness of muscles", 
-    "Acute blindness", "Blood in urine", "Hunger", "Cataracts", "Losing sight", "Glucose in urine", "Burping", 
-    "blood in stools", "Passing gases", "Eating grass", "Scratching", "Licking", "Itchy skin", "Redness of skin", 
-    "Face rubbing", "Loss of Fur", "Swelling of gum", "Redness of gum", "Receding gum", "Bleeding of gum", "Plaque", 
-    "Bad breath", "Tartar", "Lumps", "Swelling", "Red bumps", "Scabs", "Irritation", "Dry Skin", "Fur loss", 
-    "Red patches", "Heart Complication", "Weakness", "Aggression", "Pale gums", "Coma", "Collapse", "Abdominal pain", 
-    "Difficulty Urinating", "Dandruff", "Anorexia", "Blindness", "excess jaw tone", "Urine infection", "Lack of energy", 
-    "Smelly", "Neurological"
-]
-NUM_FEATURES = len(SYMPTOMS_LIST) # 75
+# ===================================================================================
+# التعديل الحاسم: استيراد المتغيرات العامة الجديدة لنموذج الكلاب من apps.py
+# وكذلك استيراد قائمة الأعراض من constants.py لتجنب التكرار
+# ===================================================================================
+from .apps import DOG_SYMPTOMS_MODEL, DOG_DISEASE_ENCODER 
+from .constants import SYMPTOMS_LIST, NUM_FEATURES
+# ===================================================================================
 
 logger = logging.getLogger(__name__)
 
+# ملاحظة: تم حذف قائمة الأعراض SYMPTOMS_LIST و NUM_FEATURES من هنا 
+# وأصبحت تُستورد من ملف constants.py
+
 # ====================================================================
-# A. نقطة نهاية تشخيص الصورة (Image Diagnosis Endpoint)
+# A. نقطة نهاية تشخيص الصورة (Image Diagnosis Endpoint) - لم تتغير
 # ====================================================================
 
 class CatDiagnosisView(APIView):
@@ -70,7 +59,10 @@ class CatDiagnosisView(APIView):
         temp_file_path = None
         try:
             # 3. حفظ الملف المؤقت للاستخدام من قبل SDK
+            # نستخدم .jpg كلاحقة افتراضية
             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
+                # التأكد من إعادة تعيين مؤشر الملف إلى البداية قبل القراءة
+                image_file.seek(0)
                 tmp_file.write(image_file.read())
                 temp_file_path = tmp_file.name
 
@@ -115,24 +107,22 @@ class CatDiagnosisView(APIView):
 
 # ====================================================================
 # B. نقطة نهاية تشخيص الأعراض (Symptom Diagnosis Endpoint)
-# يتم تحديثها للتعامل مع JSON Key-Value من Flutter.
 # ====================================================================
 
 class SymptomDiagnosisView(APIView):
     """
     نقطة نهاية لتشخيص المرض بناءً على الأعراض المقدمة في شكل قاموس (Key-Value).
-    تقوم بتحويل الأعراض المرسلة إلى متجه (Vector) بحجم 75 لتغذية النموذج.
+    تقوم بتحويل الأعراض المرسلة إلى متجه (Vector) بحجم 75 لتغذية نموذج الكلاب الجديد.
     """
     def post(self, request, *args, **kwargs):
-        # 1. التحقق من تحميل النموذج
-        if DiagnosisConfig.symptoms_model is None or DiagnosisConfig.label_encoder is None:
+        # 1. التحقق من تحميل النموذج (باستخدام الأسماء الجديدة DOG_...)
+        if DOG_SYMPTOMS_MODEL is None or DOG_DISEASE_ENCODER is None:
             return Response(
-                {"detail": "ML Model is not ready. Please ensure symptoms_model.pkl and label_encoder.pkl are loaded."},
+                {"detail": "ML Model is not ready. Please ensure dog_disease_model.pkl and disease_label_encoder.pkl are loaded."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         
         # 2. الحصول على بيانات الأعراض
-        # نتوقع قاموساً (JSON Object) مثل: {"Fever": 1, "Vomiting": 1}
         symptoms_data = request.data
         
         if not isinstance(symptoms_data, dict):
@@ -143,8 +133,9 @@ class SymptomDiagnosisView(APIView):
         
         try:
             # 3. بناء متجه الأعراض (Mapping)
-            # إنشاء متجه بحجم 75 كله أصفار (هذا هو المدخل الذي يتوقعه النموذج)
             input_vector = np.zeros(NUM_FEATURES, dtype=int)
+            
+            valid_symptom_found = False
             
             # المرور على البيانات المرسلة من Flutter وتعيين القيمة 1 في الفهرس الصحيح
             for symptom_name, value in symptoms_data.items():
@@ -155,9 +146,9 @@ class SymptomDiagnosisView(APIView):
                     index = SYMPTOMS_LIST.index(symptom_name)
                     
                     # نضع 1 في ذلك الفهرس في المتجه إذا كانت القيمة المرسلة هي 1
-                    # هذا يضمن أن التهجئة يجب أن تكون مطابقة لـ SYMPTOMS_LIST (Case-Sensitive)
                     if value == 1:
                         input_vector[index] = 1
+                        valid_symptom_found = True
                     
                 except ValueError:
                     # إذا أرسل Flutter اسماً غير موجود في قائمة الأعراض الـ 75 (نتجاهله)
@@ -165,27 +156,28 @@ class SymptomDiagnosisView(APIView):
                     continue
             
             # التأكد من أن المتجه ليس فارغاً تماماً
-            if not np.any(input_vector):
+            if not valid_symptom_found:
                  return Response(
-                    {"detail": "No valid symptoms were marked as present (1). Please select at least one symptom."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                     {"detail": "No valid symptoms were marked as present (1). Please select at least one symptom."},
+                     status=status.HTTP_400_BAD_REQUEST
+                 )
 
             # 4. تجهيز البيانات وإجراء التوقع
-            # تحويل المتجه إلى شكل (1, 75) ليناسب التوقع
-            symptoms_array = input_vector.reshape(1, -1) 
+            # إنشاء DataFrame بالبيانات لضمان التوافق مع النموذج
+            input_data = {SYMPTOMS_LIST[i]: input_vector[i] for i in range(NUM_FEATURES)}
+            symptoms_df = pd.DataFrame([input_data]) 
 
-            # إجراء التوقع
-            prediction_index = DiagnosisConfig.symptoms_model.predict(symptoms_array)[0]
+            # إجراء التوقع (باستخدام المتغير العام الجديد DOG_SYMPTOMS_MODEL)
+            prediction_index = DOG_SYMPTOMS_MODEL.predict(symptoms_df)[0]
             
-            # 5. تحويل الفهرس الرقمي إلى اسم المرض المقابل
-            predicted_disease = DiagnosisConfig.label_encoder.inverse_transform([prediction_index])[0]
+            # 5. تحويل الفهرس الرقمي إلى اسم المرض المقابل (باستخدام DOG_DISEASE_ENCODER)
+            predicted_disease = DOG_DISEASE_ENCODER.inverse_transform([prediction_index])[0]
             
             # 6. إرجاع النتيجة
             return Response({
-                "message": "Diagnosis completed successfully based on symptoms.",
-                "predicted_disease": predicted_disease,
-                "model_used": "symptoms_model_v1"
+                "message": "Diagnosis completed successfully based on symptoms (Dog Model).",
+                "predicted_disease": predicted_disease.strip(),
+                "model_used": "dog_disease_model.pkl"
             }, status=status.HTTP_200_OK)
 
         except Exception as e:

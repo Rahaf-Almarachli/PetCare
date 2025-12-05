@@ -1,37 +1,55 @@
-from django.apps import AppConfig
+# apps.py - إعدادات تطبيق التشخيص وتحميل النموذج
+
 import os
 import pickle
+from django.apps import AppConfig
 from django.conf import settings
+# لم يعد هناك حاجة لاستيراد constants هنا، لكن سنتركها إذا كان الكود القديم يتطلبها
+
+# متغيرات عامة لحفظ النموذج والمُشفِّر بعد التحميل
+# نستخدم اسم متغير واضح لنموذج الكلاب
+DOG_SYMPTOMS_MODEL = None
+DOG_DISEASE_ENCODER = None
 
 class DiagnosisConfig(AppConfig):
+    # الاسم الافتراضي لتطبيقك، تأكدي من مطابقته
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'diagnosis'
-    
-    # تعريف المتغيرات لتخزين النموذج والمُحوّل (ستكون متاحة عبر DiagnosisConfig.symptoms_model)
-    symptoms_model = None
-    label_encoder = None
 
     def ready(self):
-        # يتم استدعاء هذه الدالة مرة واحدة فقط عند بدء تشغيل Django
-        
-        # 1. بناء المسارات الكاملة
-        # نستخدم os.path.join لضمان عمل المسارات على Render أو جهازك المحلي
-        model_path = os.path.join(settings.BASE_DIR, 'diagnosis', 'ml_models', 'symptoms_model.pkl')
-        encoder_path = os.path.join(settings.BASE_DIR, 'diagnosis', 'ml_models', 'label_encoder.pkl')
+        """
+        يتم استدعاء هذه الدالة مرة واحدة عند بدء تشغيل تطبيق Django.
+        نقوم فيها بتحميل نماذج التعلم الآلي لتكون متاحة للـ Views.
+        """
+        global DOG_SYMPTOMS_MODEL
+        global DOG_DISEASE_ENCODER
 
-        # 2. تحميل النموذج والمُحوّل
+        # تحديد المسارات المتوقعة لملفات النموذج والمُشفِّر
+        # dog_disease_model.pkl هو الاسم الجديد الذي قمتِ برفعه
+        MODEL_PATH = os.path.join(settings.BASE_DIR, 'diagnosis', 'ml_models', 'dog_disease_model.pkl')
+        # disease_label_encoder.pkl هو الاسم المُعاد تسميته
+        ENCODER_PATH = os.path.join(settings.BASE_DIR, 'diagnosis', 'ml_models', 'disease_label_encoder.pkl')
+
+        # تأكد من أن ملفات النموذج موجودة قبل محاولة التحميل
+        if not os.path.exists(MODEL_PATH) or not os.path.exists(ENCODER_PATH):
+            # نستخدم طباعة باللغة الإنجليزية لتظهر بشكل صحيح في سجلات Render
+            print("❌❌❌ ERROR: Dog Diagnosis Model or Encoder file not found in ml_models folder. Check file names. ❌❌❌")
+            DOG_SYMPTOMS_MODEL = None
+            DOG_DISEASE_ENCODER = None
+            return
+
         try:
-            with open(model_path, 'rb') as f:
-                DiagnosisConfig.symptoms_model = pickle.load(f)
+            # 1. تحميل نموذج تشخيص الأعراض
+            with open(MODEL_PATH, 'rb') as model_file:
+                DOG_SYMPTOMS_MODEL = pickle.load(model_file)
             
-            with open(encoder_path, 'rb') as f:
-                DiagnosisConfig.label_encoder = pickle.load(f)
+            # 2. تحميل مُشفِّر التسميات
+            with open(ENCODER_PATH, 'rb') as encoder_file:
+                DOG_DISEASE_ENCODER = pickle.load(encoder_file)
 
-            print("✅ Symptoms Model and Label Encoder loaded successfully.")
+            print("✅✅✅ Dog Symptom Diagnosis Models loaded successfully! ✅✅✅")
             
-        except FileNotFoundError:
-            # رسالة خطأ واضحة إذا لم يتم العثور على الملفات
-            print(f"❌ Error: Model or Encoder file not found. Please ensure they are in: {os.path.join(settings.BASE_DIR, 'diagnosis', 'ml_models')}")
         except Exception as e:
-            # رسالة خطأ لأي مشكلة تحميل أخرى (مثل مشكلة توافق المكتبات)
-            print(f"❌ Error loading ML model. Check scikit-learn version compatibility: {e}")
+            print(f"❌ ERROR DURING MODEL LOADING: {e}")
+            DOG_SYMPTOMS_MODEL = None
+            DOG_DISEASE_ENCODER = None
