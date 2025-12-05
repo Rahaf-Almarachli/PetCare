@@ -1,11 +1,13 @@
-# diagnosis/urls.py
 
 from django.urls import path
-from .views import CatDiagnosisView
-from .views import SymptomDiagnosisView
+from .views import diagnose_by_symptoms, CatDiagnosisView
 
 urlpatterns = [
-    # الرابط الذي سيستقبل طلبات التشخيص من تطبيق Flutter
+    # المسار 1: التشخيص المعتمد على الأعراض (النموذج المحلي)
+    # يمكن الوصول إليه عبر: [Your Domain]/api/symptoms/
+    path('symptoms/', diagnose_by_symptoms, name='diagnosis_by_symptoms'),
+    
+    # المسار 2: التشخيص المعتمد على الصور (Roboflow)
+    # يمكن الوصول إليه عبر: [Your Domain]/api/cat/
     path('cat/', CatDiagnosisView.as_view(), name='cat-diagnosis'),
-    path('symptoms/', SymptomDiagnosisView.as_view(), name='symptom-diagnosis'),
 ]
