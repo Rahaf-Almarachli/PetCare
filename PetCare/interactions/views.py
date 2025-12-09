@@ -149,6 +149,10 @@ class RequestUpdateStatusView(APIView):
         action_message = ""
         sender_id = request_obj.sender.id 
 
+        # 🌟 التعديل: تسجيل محاولة معالجة تحديث الحالة
+        logger.info(f"Processing status update for Request {pk} to {new_status}. Target User ID: {sender_id}")
+        # -----------------------------------------------------------------
+
         if new_status == 'Accepted':
             
             title = "Congratulations, Accepted!"
@@ -172,7 +176,7 @@ class RequestUpdateStatusView(APIView):
             else:
                 activity_key = None
 
-            # 3. منح النقاط (هذا هو المكان الصحيح للمكافأة)
+            # 3. منح النقاط 
             if activity_key:
                 try:
                     success, points_awarded = award_points(
@@ -214,8 +218,10 @@ class RequestUpdateStatusView(APIView):
                 "status": new_status,
                 "pet_name": pet.pet_name
             }
+            # 🚨 التعديل: إرسال الإشعار أولاً
             send_pushy_notification(sender_id, title, body, payload)
             
+            # 🚨 ثم حذف الطلب
             request_id = request_obj.id
             request_obj.delete()
 
@@ -223,6 +229,7 @@ class RequestUpdateStatusView(APIView):
                 {"detail": f"Request {request_id} rejected and deleted from your inbox."},
                 status=status.HTTP_200_OK
             )
+        
         # -----------------------------------------------------------------
         
         else:
