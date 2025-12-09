@@ -1,7 +1,7 @@
-import requests as pushy_http_client # 🌟 الحل النهائي: استخدام اسم فريد جداً لتجنب التضارب
+import requests as pushy_http_client
 from django.conf import settings
 from account.models import User
-from .models import PushToken # نموذج الـ Token
+from .models import PushToken
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,6 +12,7 @@ def send_pushy_notification(user_id, title, body, data={}):
     """
     
     # 1. التحقق من مفتاح API
+    # ملاحظة: يجب أن يُرسل مفتاح API السري كـ 'api_key' في معلمة Query String
     secret_key = settings.PUSHY_SECRET_KEY
     if not secret_key:
         logger.error("PUSHY_SECRET_KEY is not set in settings.")
@@ -33,47 +34,64 @@ def send_pushy_notification(user_id, title, body, data={}):
         return False
 
     # 3. بناء حمولة الإشعار (Payload)
-    # يمكن إضافة المزيد من الخيارات هنا حسب متطلبات Flutter
     payload = {
         "to": tokens,
         "data": {
             "title": title,
             "body": body,
-            **data, # دمج البيانات المخصصة (مثل action, request_id)
-            "content_available": True # للسماح بمعالجة الإشعار في الخلفية
+            **data, 
+            "content_available": True 
         },
         "notification": {
             "title": title,
             "body": body,
-            "badge": 1, # تحديث رقم الشارة (اختياري)
+            "badge": 1, 
             "sound": "default"
         },
         "content_available": True
     }
 
     # 4. إرسال الطلب إلى Pushy API
+    # التعديل الرئيسي: تغيير /send إلى /push
+    # وإزالة Authorization Header لأن مفتاح Pushy السري يُرسل كمعامل (query parameter)
+    
+    # المسار الصحيح لنقطة النهاية (Endpoint)
+    pushy_url = "https://api.pushy.me/push"
+    
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {secret_key}"
+        # تمت إزالة Authorization Header واستبداله بـ params
+    }
+
+    params = {
+        "api_key": secret_key
     }
 
     try:
-        # 🌟 استخدام pushy_http_client بدلاً من requests/http_client 🌟
-        response = pushy_http_client.post("https://api.pushy.me/send", json=payload, headers=headers, timeout=10)
-        response.raise_for_status() # رفع خطأ لأكواد الحالة 4xx أو 5xx
+        # إرسال الطلب مع تمرير api_key كمعامل URL (params)
+        response = pushy_http_client.post(
+            pushy_url, 
+            json=payload, 
+            headers=headers, 
+            params=params, 
+            timeout=10
+        )
         
+        response.raise_for_status() # رفع خطأ لأكواد الحالة 4xx أو 5xx
+
         # التأكد من نجاح الرد من Pushy
         response_data = response.json()
         if response_data.get('success', False):
             logger.info(f"Push notification sent successfully to {len(tokens)} devices for user {user_id}.")
             return True
         else:
-            logger.error(f"Pushy API error for user {user_id}: {response_data.get('error')}")
+            # يسجل أخطاء API مثل 'Invalid Token' أو 'No Recipients'
+            logger.error(f"Pushy API returned error for user {user_id}: {response_data.get('error')}")
             return False
 
-    # 🌟 استخدام pushy_http_client.exceptions للتعامل مع أخطاء الاتصال 🌟
     except pushy_http_client.exceptions.RequestException as e: 
-        logger.error(f"Pushy request failed (Connection Error) for user {user_id}: {e}")
+        # يسجل أخطاء الاتصال مثل 404 أو Timeouts
+        logger.error(f"Pushy request failed (Connection Error) for user {user_id}. URL: {pushy_url} Error: {e}")
         return False
     except Exception as e:
         logger.error(f"An unexpected error occurred during Pushy process for user {user_id}: {e}")
