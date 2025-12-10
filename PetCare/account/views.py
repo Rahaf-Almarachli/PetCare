@@ -486,7 +486,7 @@ class EmailChangeRequestView(APIView):
         if User.objects.filter(email=new_email).exists():
             return Response({"error": "This email is already in use."}, status=status.HTTP_400_BAD_REQUEST)
         
-        # توليد وحفظ OTP (ضمن المعاملة الذرية)
+        # 1. توليد وحفظ OTP (ضمن المعاملة الذرية)
         otp = str(random.randint(100000, 999999))
         
         hashed_otp = bcrypt.hashpw(otp.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -494,27 +494,15 @@ class EmailChangeRequestView(APIView):
         OTP.objects.filter(user=request.user, otp_type="email_change").delete()
         OTP.objects.create(user=request.user, code=hashed_otp, otp_type="email_change")
         
-        # 🟢 محاولة إرسال البريد الإلكتروني إلى البريد الجديد 🟢
-        email_subject = 'PetCare Email Change Verification Code'
-        email_message = f"Your Verification Code to change your email to {new_email} is: {otp}"
+        # 2. 🟢 طباعة الرمز في الكونسول بدلاً من الإرسال 🟢
         
-        send_mail(
-                subject=email_subject,
-                message=email_message,
-                from_email=DEFAULT_FROM_EMAIL,
-                recipient_list=[new_email], # الإرسال إلى الإيميل الجديد
-                fail_silently=False,
-            )
-        return Response({"message": "Verification code sent to your new email."}, status=status.HTTP_200_OK)
-            
-        """except (SMTPException, socket_timeout) as e:
-            logger.error(f"Email Error (Email Change) to {new_email}: {e}")
-            print(f"DEBUG: OTP failed to send via email (Email Change). Code: {otp}")
-            return Response({"message": "Verification code generated (Email failed, check server logs)."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except Exception as e:
-            logger.error(f"General Error (Email Change) to {new_email}: {e}")
-            print(f"DEBUG: OTP failed to send via email (Email Change). Code: {otp}")
-            return Response({"message": "Verification code generated (Email failed, check server logs)."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)"""
+        # ⚠️ ملاحظة: استخدم logging.info أو print() حسب تفضيلاتك
+        logger.info(f"DEBUG: OTP generated for email change request to {new_email}. Code: {otp}")
+        print(f"DEBUG: OTP for {new_email} is: {otp}")
+        
+        # 3. إزالة استدعاء send_mail وأي معالجة أخطاء مرتبطة به
+
+        return Response({"message": "Verification code generated and ready for use (Check server console)."}, status=status.HTTP_200_OK)
 
 # ----------------------------------------------------
 # 9. Email Change Verify
