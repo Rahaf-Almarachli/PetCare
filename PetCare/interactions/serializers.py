@@ -5,7 +5,7 @@ from pets.models import Pet
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-# 🌟 الاستيراد الجديد من تطبيق notifications 🌟
+# ⚠️ تم إبقاء الاستيراد لكن الكود لا يستخدمه في دالة create الآن ⚠️
 from notifications.utils import send_pushy_notification 
 
 User = get_user_model()
@@ -30,11 +30,11 @@ class SenderDetailSerializer(serializers.ModelSerializer):
         return getattr(obj, 'phone', '') or ''
 
 # ----------------------------------------------------
-# 2. Request Create Serializer (المعدل: تم إضافة الإشعار)
+# 2. Request Create Serializer (المعدل: تم حذف الإشعار)
 # ----------------------------------------------------
 class RequestCreateSerializer(serializers.ModelSerializer):
     """
-    Serializer مخصص لإنشاء طلب جديد، ويشغل إشعار للمالك.
+    Serializer مخصص لإنشاء طلب جديد، الآن لا يرسل الإشعار بنفسه.
     """
     pet_id = serializers.IntegerField(write_only=True)
     attached_file = serializers.URLField(
@@ -73,24 +73,10 @@ class RequestCreateSerializer(serializers.ModelSerializer):
         validated_data['receiver'] = pet.owner 
         validated_data['pet'] = pet
         
-        # 1. إنشاء وحفظ كائن الطلب
+        # 1. إنشاء وحفظ كائن الطلب (فقط)
         request = InteractionRequest.objects.create(**validated_data)
 
-        # 2. 🌟 إرسال الإشعار إلى مالك الحيوان (الحالة 1) 🌟
-        owner_id = pet.owner.id
-        pet_name = pet.pet_name
-        
-        title = f"لديك طلب {request.request_type} جديد!"
-        body = f"وصل طلب جديد لحيوانك {pet_name}، يرجى مراجعته."
-        
-        # بيانات مخصصة لتوجيه تطبيق Flutter
-        payload = {
-            "action": "NEW_REQUEST",
-            "request_id": request.id,
-            "pet_name": pet_name,
-        }
-        
-        send_pushy_notification(owner_id, title, body, payload)
+        # 2. ❌ تم إزالة منطق الإشعار العربي من هنا لمنع التكرار
         
         return request
 
