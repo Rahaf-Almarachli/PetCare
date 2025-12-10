@@ -498,24 +498,23 @@ class EmailChangeRequestView(APIView):
         email_subject = 'PetCare Email Change Verification Code'
         email_message = f"Your Verification Code to change your email to {new_email} is: {otp}"
         
-        try:
-            send_mail(
+        send_mail(
                 subject=email_subject,
                 message=email_message,
                 from_email=DEFAULT_FROM_EMAIL,
                 recipient_list=[new_email], # الإرسال إلى الإيميل الجديد
                 fail_silently=False,
             )
-            return Response({"message": "Verification code sent to your new email."}, status=status.HTTP_200_OK)
+        return Response({"message": "Verification code sent to your new email."}, status=status.HTTP_200_OK)
             
-        except (SMTPException, socket_timeout) as e:
+        """except (SMTPException, socket_timeout) as e:
             logger.error(f"Email Error (Email Change) to {new_email}: {e}")
             print(f"DEBUG: OTP failed to send via email (Email Change). Code: {otp}")
             return Response({"message": "Verification code generated (Email failed, check server logs)."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"General Error (Email Change) to {new_email}: {e}")
             print(f"DEBUG: OTP failed to send via email (Email Change). Code: {otp}")
-            return Response({"message": "Verification code generated (Email failed, check server logs)."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"message": "Verification code generated (Email failed, check server logs)."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)"""
 
 # ----------------------------------------------------
 # 9. Email Change Verify
