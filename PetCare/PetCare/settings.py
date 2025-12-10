@@ -78,7 +78,6 @@ INSTALLED_APPS = [
     'reward_app',
     'notifications',
     'diagnosis',
-    'django_extensions',
 ]
 
 REST_FRAMEWORK = {
