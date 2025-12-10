@@ -149,7 +149,7 @@ class RequestUpdateStatusView(APIView):
         action_message = ""
         sender_id = request_obj.sender.id 
 
-        # 🌟 التعديل: تسجيل محاولة معالجة تحديث الحالة
+        # 🌟 تسجيل محاولة معالجة تحديث الحالة
         logger.info(f"Processing status update for Request {pk} to {new_status}. Target User ID: {sender_id}")
         # -----------------------------------------------------------------
 
@@ -193,6 +193,10 @@ class RequestUpdateStatusView(APIView):
             # حذف الطلبات الأخرى المتعلقة بالحيوان
             InteractionRequest.objects.filter(pet=pet).delete()
             
+            # 🌟 السطر التشخيصي الإضافي: نؤكد أننا على وشك الإرسال 
+            logger.error(f"DIAGNOSTIC VIEW: Preparing to send ACCEPTED notification to User {sender_id}")
+            # -----------------------------------------------------------------
+            
             # 4. إرسال إشعار القبول عبر Pushy
             payload = {
                 "action": "REQUEST_STATUS_UPDATE",
@@ -218,6 +222,11 @@ class RequestUpdateStatusView(APIView):
                 "status": new_status,
                 "pet_name": pet.pet_name
             }
+            
+            # 🌟 السطر التشخيصي الإضافي: نؤكد أننا على وشك الإرسال
+            logger.error(f"DIAGNOSTIC VIEW: Preparing to send REJECTED notification to User {sender_id}")
+            # -----------------------------------------------------------------
+            
             # 🚨 التعديل: إرسال الإشعار أولاً
             send_pushy_notification(sender_id, title, body, payload)
             
