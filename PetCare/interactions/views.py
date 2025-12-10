@@ -156,7 +156,7 @@ class RequestUpdateStatusView(APIView):
         if new_status == 'Accepted':
             
             title = "Congratulations, Accepted!"
-            body = f"The Owner {pet.pet_name} Accepted The Request!"
+            body = f"The Owner of {pet.pet_name} Accepted The Request!"
             
             points_awarded = 0
             sender_current_points = 0
@@ -215,7 +215,7 @@ class RequestUpdateStatusView(APIView):
         elif new_status == 'Rejected':
             
             title = "Sorry, Rejected"
-            body = f"The Owner {pet.pet_name} Rejected The Request!"
+            body = f"The Owner of {pet.pet_name} Rejected The Request!"
             payload = {
                 "action": "REQUEST_STATUS_UPDATE",
                 "request_id": request_obj.id,
