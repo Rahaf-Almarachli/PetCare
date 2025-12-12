@@ -158,8 +158,6 @@ class RequestUpdateStatusView(APIView):
             title = "Congratulations, Accepted!"
             body = f"The Owner of {pet.pet_name} Accepted The Request!"
             
-            points_awarded = 0
-            sender_current_points = 0
 
             if request_obj.request_type == 'Adoption':
                 pet.owner = request_obj.sender 
