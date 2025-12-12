@@ -121,6 +121,7 @@ class RequestUpdateStatusView(APIView):
     def patch(self, request, pk):
         request_obj = get_object_or_404(InteractionRequest, id=pk)
         user = request.user
+        sender = request_obj.sender
         
         if request_obj.receiver != user:
             return Response(
@@ -147,7 +148,7 @@ class RequestUpdateStatusView(APIView):
         
         pet = request_obj.pet
         action_message = ""
-        sender_id = request_obj.sender.id 
+        sender_id = sender.id 
 
         # 🌟 تسجيل محاولة معالجة تحديث الحالة
         logger.info(f"Processing status update for Request {pk} to {new_status}. Target User ID: {sender_id}")
@@ -158,9 +159,11 @@ class RequestUpdateStatusView(APIView):
             title = "Congratulations, Accepted!"
             body = f"The Owner of {pet.pet_name} Accepted The Request!"
             
+            points_awarded = 0
+            sender_current_points = 0
 
             if request_obj.request_type == 'Adoption':
-                pet.owner = request_obj.sender 
+                pet.owner = sender 
                 pet.save()
                 
                 AdoptionPost.objects.filter(pet=pet).delete()

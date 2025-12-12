@@ -77,3 +77,4 @@ class InteractionRequest(models.Model):
     def __str__(self):
         sender_name = getattr(self.sender, 'full_name', self.sender.email)
         return f"Request for {self.pet.pet_name} ({self.request_type}) by {sender_name}"
+    
